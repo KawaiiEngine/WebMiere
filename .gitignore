@@ -1,0 +1,91 @@
+# Visual Studio local state
+.vs/
+*.user
+*.suo
+*.VC.db
+*.VC.opendb
+*.vsidx
+*.userosscache
+*.sln.docstates
+
+# Build output
+build/
+x64/
+Debug/
+Release/
+*.obj
+*.o
+*.pdb
+*.idb
+*.ipdb
+*.iobj
+*.ilk
+*.exp
+*.lib
+*.prm
+*.dll
+*.exe
+*.tlog
+*.lastbuildstate
+*.recipe
+*.unsuccessfulbuild
+
+# Generated resource cache
+*.aps
+
+# Local dependency trees
+ffmpeg/
+ffmpeg-*/
+FFmpeg/
+FFmpeg-*/
+nv-codec-headers*/
+nvidia_video_codec_sdk/
+v12.*/
+CUDA/
+cuda/
+CUDA Toolkit*/
+Premiere Pro * C++ SDK/
+Adobe*SDK*/
+
+# Local test media and diagnostics
+diagnostics/
+test-media/
+samples/
+*.webm
+*.mkv
+*.mp4
+*.mov
+*.avi
+*.wav
+*.aac
+*.opus
+*.dmp
+*.dump
+*.trace
+*.etl
+*.jsonl
+*.log
+
+# Generated packages, archives, and temporary files
+*.zip
+*.7z
+*.tar
+*.tar.gz
+*.tgz
+*.sha256
+SHA256SUMS*.txt
+*.tmp
+*.bak
+*.orig
+
+# Secrets and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+*secret*
+*credential*
+*token*

@@ -1,0 +1,52 @@
+// Copyright (c) 2026 KawaiiEngine (Sashimiso)
+//
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+#include <windows.h>
+#include "WebMiereVersion.h"
+
+// Keep the existing importer FourCC for compatibility.
+#define WEBMIERE_IMPT_FOURCC 0x5650394FL
+
+1000 IMPT DISCARDABLE
+BEGIN
+    0x0000
+    WEBMIERE_IMPT_FOURCC
+END
+
+1 VERSIONINFO
+ FILEVERSION WEBMIERE_VERSION_COMMA
+ PRODUCTVERSION WEBMIERE_VERSION_COMMA
+ FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
+#ifdef _DEBUG
+ FILEFLAGS VS_FF_DEBUG
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_DLL
+ FILESUBTYPE VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName",      "KawaiiEngine (Sashimiso)"
+            VALUE "FileDescription",  "WebMiere - NVIDIA VP9/Opus Importer for Adobe Premiere Pro"
+            VALUE "FileVersion",      WEBMIERE_VERSION_STRING
+            VALUE "InternalName",     "WebMiere"
+            VALUE "LegalCopyright",   "Copyright (c) 2026 KawaiiEngine (Sashimiso)"
+            VALUE "OriginalFilename", "WebMiere.prm"
+            VALUE "ProductName",      "WebMiere"
+            VALUE "ProductVersion",   WEBMIERE_VERSION_STRING
+            VALUE "Comments",         "Mina says: Silence is probably fine."
+        END
+    END
+
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0409, 1200
+    END
+END

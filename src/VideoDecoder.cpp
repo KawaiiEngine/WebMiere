@@ -1119,7 +1119,7 @@ bool VideoDecoder::DecodeFrameToYUV420P(int64_t targetFrame,
 		return true;
 	}
 
-	if (mUseHw && ReopenCpu())
+	if (mUseHw && mFallbackReason != nullptr && ReopenCpu())
 	{
 		if (DecodeFrameToSurface(targetFrame, &view))
 		{
@@ -1179,16 +1179,19 @@ bool VideoDecoder::ConvertSurfaceToYUV420P(const Vp9oDecodedFrameView &view,
 		int tr = av_hwframe_transfer_data(mSwFrame, src, 0);
 		if (tr < 0)
 		{
+			mFallbackReason = "hwdownload";
 						return false;
 		}
 				src = mSwFrame;
 		if (!ValidateDecodedFrameForView(src) || IsHwPixFmt(src->format))
 		{
+			mFallbackReason = "hwdownload-frame";
 			return false;
 		}
 	}
 	else if (IsHwPixFmt(src->format))
 	{
+		mFallbackReason = "unexpected-hwfmt";
 				return false;
 	}
 

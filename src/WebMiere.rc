@@ -34,7 +34,7 @@ BEGIN
         BLOCK "040904B0"
         BEGIN
             VALUE "CompanyName",      "KawaiiEngine (Sashimiso)"
-            VALUE "FileDescription",  "WebMiere - NVIDIA VP9/Opus Importer for Adobe Premiere Pro"
+            VALUE "FileDescription",  "WebMiere - NVIDIA WebM/MKV Importer for Adobe Premiere Pro"
             VALUE "FileVersion",      WEBMIERE_VERSION_STRING
             VALUE "InternalName",     "WebMiere"
             VALUE "LegalCopyright",   "Copyright (c) 2026 KawaiiEngine (Sashimiso)"

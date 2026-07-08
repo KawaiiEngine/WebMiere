@@ -1,10 +1,10 @@
 <p align="center">
-  <img src="docs/images/webmiere-hero.png" alt="WebMiere - YouTube VP9 and Opus importer for Adobe Premiere Pro" width="100%">
+  <img src="docs/images/webmiere-hero.png" alt="WebMiere - YouTube VP9, AV1 SDR, and Opus importer for Adobe Premiere Pro" width="100%">
 </p>
 
 # WebMiere
 
-**Drop YouTube VP9/Opus media straight into Adobe Premiere Pro.**
+**Drop supported YouTube-style WebM/MKV media straight into Adobe Premiere Pro.**
 
 WebMiere is a native Windows x64 importer for the `.webm` and `.mkv` files commonly produced from YouTube video and audio streams.
 
@@ -21,11 +21,13 @@ Repository: [KawaiiEngine/WebMiere](https://github.com/KawaiiEngine/WebMiere)
 >
 > GeForce RTX 20 / 30 / 40 / 50 series GPUs are recommended for VP9 hardware decoding.
 >
+> AV1 SDR import requires AV1 hardware decode support. Use RTX 30 series or newer.
+>
 > AMD-only, Intel-only, and macOS systems are not supported.
 
 ## What WebMiere Does
 
-- Imports YouTube-style VP9/Opus WebM and Matroska files directly into Premiere Pro
+- Imports supported WebM/MKV files (YouTube-style VP9/Opus and AV1 SDR/Opus) directly into Premiere Pro
 - Uses NVIDIA NVDEC, CUDA, and NPP for the accelerated video path
 - Returns YUV420P directly when Premiere accepts it
 - Supports CPU VP9 decoding as a diagnostic fallback
@@ -35,7 +37,7 @@ Repository: [KawaiiEngine/WebMiere](https://github.com/KawaiiEngine/WebMiere)
 Typical workflow:
 
 ```text
-YouTube VP9/Opus file -> Premiere Pro -> edit
+YouTube-style VP9 or AV1 SDR WebM/MKV + Opus -> Premiere Pro -> edit
 ```
 
 WebMiere is deliberately specialized. It is not intended to replace a general-purpose Matroska importer.
@@ -46,7 +48,7 @@ WebMiere is deliberately specialized. It is not intended to replace a general-pu
 | --- | --- |
 | Source type | Ordinary YouTube-style media streams |
 | Containers | WebM / Matroska (`.webm`, `.mkv`) |
-| Video codec | VP9 Profile 0 |
+| Video codec | VP9 Profile 0; AV1 Main |
 | Pixel format | 8-bit YUV 4:2:0 |
 | Color | SDR, BT.709 matrix, limited range |
 | Frame rate | Constant frame rate |
@@ -57,24 +59,24 @@ WebMiere is deliberately specialized. It is not intended to replace a general-pu
 | Premiere audio output | Planar 32-bit float |
 | Operating system | Windows x64 |
 | Host | Adobe Premiere Pro 26.x; built with the Premiere Pro 26.0 C++ SDK |
-| GPU | NVIDIA GPU required |
+| GPU | NVIDIA GPU required; AV1 requires NVIDIA AV1 hardware decode support |
 
 ## YouTube and Frame Rate
 
-WebMiere is designed around the constant-frame-rate VP9 delivery streams normally encountered when downloading YouTube media, including common nominal rates such as 24, 25, 30, 48, 50, 59.94, and 60 fps.
+WebMiere is designed around the constant-frame-rate VP9 and AV1 SDR delivery streams normally encountered when downloading YouTube-style media, including common nominal rates such as 24, 25, 30, 48, 50, 59.94, and 60 fps.
 
-A camera mode or video title may contain the term “VFR” while the actual YouTube VP9 stream is still ordinary CFR media. WebMiere cares about the encoded stream, not the title or the camera recording-mode name.
+A camera mode or video title may contain the term "VFR" while the actual YouTube-style VP9 or AV1 SDR stream is still ordinary CFR media. WebMiere cares about the encoded stream, not the title or the camera recording mode name.
 
 True variable-frame-rate files are not supported. They may still import and be reported as a nominal CFR stream, but frame selection, seeking, audio/video synchronization, editing behavior, and exported results are not guaranteed.
 
 ## Unsupported Media
 
 - True variable-frame-rate video
-- VP9 10-bit or 12-bit video
-- VP9 4:2:2, 4:4:4, RGB, or alpha
-- HDR, BT.2020, PQ, or HLG media
+- VP9 or AV1 10-bit or 12-bit video
+- VP9 or AV1 4:2:2, 4:4:4, RGB, or alpha
+- HDR, BT.2020, PQ, or HLG media, including AV1 HDR media
 - Full-range video
-- AV1, H.264, HEVC, ProRes, and other non-VP9 video codecs
+- H.264, HEVC, ProRes, and other non-VP9/non-AV1 video codecs
 - AAC, Vorbis, and other non-Opus audio
 - Mono, surround, multichannel, or non-48 kHz Opus
 - AMD-only or Intel-only systems
@@ -84,12 +86,12 @@ True variable-frame-rate files are not supported. They may still import and be r
 
 1. Install or update the NVIDIA graphics driver.
 2. Close Adobe Premiere Pro.
-3. Launch `WebMiere-Setup.exe` normally.
+3. Launch `WebMiere-Setup.exe`.
 4. Choose `Install`.
 5. When Windows asks for permission, allow the WebMiere Worker installer to make changes.
 6. Start Premiere Pro.
 
-The installer installs WebMiere to:
+Default installation path:
 
 ```text
 C:\Program Files\Adobe\Common\Plug-ins\7.0\MediaCore\WebMiere
@@ -125,8 +127,6 @@ nvidia\
   nppig64_12.dll
 ```
 
-The exact CUDA/NPP set is release-specific and must match the ABI used to build `WebMiere.prm`.
-
 Driver-provided NVIDIA components such as `nvcuda.dll` are not bundled with WebMiere.
 
 Standard Inno Setup logs are written to the Windows temporary directory. These are installer logs, not WebMiere importer runtime logs.
@@ -141,13 +141,19 @@ Standard Inno Setup logs are written to the Windows temporary directory. These a
 
 Official release assets should be used as a matched set.
 
-A release is expected to provide:
+An official release includes:
 
 - A SHA-256 manifest for the downloadable WebMiere package
 - The corresponding WebMiere source tag or source archive under MPL-2.0
 - The exact FFmpeg runtime build used by the plugin
 - A compact installed license payload under `assets\licenses`
-- The matching WebMiere FFmpeg runtime and development release packages, including the corresponding FFmpeg source archives, configure record, license records, runtime probe report, source-change diff, and SHA-256 manifests
+- The matching WebMiere FFmpeg runtime and development release packages, including:
+  - corresponding FFmpeg source archives
+  - configure records
+  - license records
+  - runtime probe report
+  - source-change diff
+  - SHA-256 manifests
 - Third-party license texts and notices applicable to the shipped binaries, including the NVIDIA CUDA Toolkit 12.9 EULA used for this build
 - GitHub Artifact Attestations where supported by the public release workflow
 
@@ -174,22 +180,23 @@ WebMiere directly links against the NVIDIA driver API. FFmpeg, CUDA Runtime, and
 
 A `.webm` or `.mkv` extension does not guarantee compatibility. Check that the file is:
 
-- VP9 Profile 0 rather than AV1 or another video codec
+- VP9 Profile 0 or AV1 Main SDR, rather than another video codec
 - Constant frame rate rather than true variable frame rate
 - 8-bit YUV 4:2:0
 - Tagged as BT.709 matrix and limited range
 - SDR rather than HDR
+- For AV1 media, the system has an NVIDIA GPU with AV1 hardware decode support
 - Opus stereo at 48 kHz, or has no audio stream
 - Fully downloaded and not truncated
 
-If another importer is installed, WebMiere is designed to take supported VP9/Opus media and return unsupported media to Premiere so another importer may try it.
+If another importer is installed, WebMiere is designed to take supported VP9/Opus and AV1 SDR/Opus media and pass unsupported media back to Premiere so another importer can handle it.
 
-If a YouTube download that should be supported does not import, download it again before investigating further. Incomplete downloads and unusual remuxing tools can produce files outside the normal YouTube VP9/Opus shape.
+If a YouTube download that should be supported does not import, download it again before investigating further. Incomplete downloads and unusual remuxing tools can produce files outside the normal supported YouTube-style VP9/Opus or AV1 SDR/Opus shape.
 
 ## Known Behavior and Design Choices
 
 - WebMiere favors responsive editing over strict recovery. Short audio reads and some recoverable audio decode gaps may be padded with silence.
-- Audio timestamps are normalized relative to the stream start time. Small Opus priming residues at the beginning are clamped to sample zero.
+- Audio timing is normalized relative to the stream start time. Small startup residues are handled at the beginning of the stream rather than allowed to become progressive audio drift.
 - YouTube/DASH muxing may produce small differences between video and audio end times. When a stream-specific duration is unavailable, a container-duration fallback can result in a short final-frame hold. This has not shown a visible problem in normal tested YouTube material.
 - True VFR files may import as nominal CFR. WebMiere does not attempt exact VFR reconstruction and may select, repeat, or skip nearby frames without displaying a warning.
 - Premiere may occasionally request BGRA output for thumbnails, isolated frames, effects, or internal display paths. This is expected; normal playback generally uses YUV420P when available.
@@ -205,21 +212,21 @@ High-level flow:
 
 1. Premiere loads the importer and reads its IMPT resource.
 2. WebMiere validates the container and stream metadata.
-3. FFmpeg demuxes WebM/Matroska and decodes VP9 and Opus.
+3. FFmpeg demuxes WebM/Matroska and decodes VP9 or AV1 video and Opus audio.
 4. On the NVIDIA path, CUDA/NPP converts decoded surfaces into a Premiere-compatible layout.
 5. WebMiere returns PPix video frames and planar float audio to Premiere.
 
-Unsupported metadata is rejected as early as practical. Because the importer runs inside the Premiere process, the implementation deliberately prefers a narrow and testable media contract over broad codec coverage.
+Unsupported metadata is rejected as early as possible. Because the importer runs inside the Premiere process, the implementation deliberately prefers a narrow and testable media contract over broad codec coverage.
 
 ## Importer Selection and Fallback
 
-WebMiere registers with elevated importer priority so supported VP9/Opus files are offered to it before more general importers.
+WebMiere registers with elevated importer priority so supported VP9/Opus and AV1 SDR/Opus files are offered to it before more general importers.
 
-Unsupported media must return `imBadFile` from the relevant open or metadata path so Premiere can try another importer. This behavior has been tested with competing Matroska importers using AV1/AAC and VP9 Profile 2 HDR media.
+Unsupported media must return `imBadFile` from the relevant open or metadata path so Premiere can try another importer. This behavior has been tested with competing Matroska importers using AV1 HDR/10-bit media, AV1/AAC media, and VP9 Profile 2 HDR media.
 
 ## Media Contract
 
-The current target is ordinary YouTube CFR VP9/Opus delivery media.
+The current target is ordinary YouTube-style CFR VP9/Opus media and AV1 SDR/Opus WebM/MKV media.
 
 Video timestamps are mapped to a fixed frame index. Exact VFR timestamp reproduction is outside the project scope. A true VFR stream may be accepted using its nominal frame rate, but its frame timing is unsupported.
 
@@ -229,7 +236,7 @@ Audio is decoded as stereo 48 kHz Opus and converted to planar 32-bit float. Str
 
 WebMiere prefers YUV420P 8-bit BT.709 output when Premiere accepts it. If Premiere requests BGRA, WebMiere uses the BGRA path.
 
-For CUDA decoding, stream/event ordering is used so NPP does not read an NVDEC surface before producer work has completed. Required GPU conversion and copies are completed before Premiere-owned memory is returned.
+For CUDA decoding, stream and event synchronization ensures that NPP does not read an NVDEC surface before producer work completes. Required GPU conversion and copies are completed before Premiere-owned memory is returned.
 
 Primary NPP conversions include:
 
@@ -249,11 +256,13 @@ Separate decoder state is maintained for random-access reads and sequential/conf
 
 WebMiere directly links against the NVIDIA driver API (`nvcuda.dll`). FFmpeg, CUDA Runtime, and NPP DLLs are delay-loaded. At importer startup, WebMiere resolves its own plugin directory, registers the `ffmpeg` and `nvidia` runtime subdirectories, and preloads the required DLLs from absolute paths before any FFmpeg, CUDA, or NPP API is called.
 
+The exact CUDA/NPP DLL set is release-specific and must match the ABI used to build `WebMiere.prm`.
+
 Consequences:
 
 - On a supported NVIDIA system with the required DLLs, Premiere can load the plugin.
 - Without the NVIDIA driver, Windows cannot resolve `nvcuda.dll` and rejects the plugin.
-- Missing FFmpeg or CUDA/NPP runtime DLLs prevent WebMiere from initializing, but after the plugin entry point is reached.
+- Missing FFmpeg or CUDA/NPP runtime DLLs prevent WebMiere from initializing, though this check occurs after the plugin entry point is reached.
 - If `cudart64_12.dll` is already loaded in the Premiere process, WebMiere records and reuses that module path. Otherwise it loads the bundled `nvidia\cudart64_12.dll`.
 - macOS cannot load the Windows PE `.prm` binary.
 

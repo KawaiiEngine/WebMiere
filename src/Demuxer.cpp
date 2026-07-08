@@ -66,14 +66,22 @@ static void Utf16ToUtf8(const prUTF16Char *src, std::string &out)
 }
 
 
-static Vp9oCodec MapCodec(int avCodecId)
+static WebMiereCodec MapCodec(int avCodecId)
 {
 	switch (avCodecId)
 	{
-		case AV_CODEC_ID_VP9:	return VP9O_CODEC_VP9;
-		case AV_CODEC_ID_OPUS:	return VP9O_CODEC_OPUS;
-		default:				return VP9O_CODEC_OTHER;
+		case AV_CODEC_ID_VP9:	return WEBMIERE_CODEC_VP9;
+		case AV_CODEC_ID_AV1:	return WEBMIERE_CODEC_AV1;
+		case AV_CODEC_ID_OPUS:	return WEBMIERE_CODEC_OPUS;
+		default:				return WEBMIERE_CODEC_OTHER;
 	}
+}
+
+
+static bool IsSupportedVideoCodec(WebMiereCodec codec)
+{
+	return codec == WEBMIERE_CODEC_VP9 ||
+		   codec == WEBMIERE_CODEC_AV1;
 }
 
 
@@ -154,9 +162,9 @@ bool ProbeMedia(const prUTF16Char *path, MediaProbeInfo *out, std::string *errMs
 		out->height			= par->height;
 		out->avPixelFormat	= par->format;
 
-		if (out->videoCodec != VP9O_CODEC_VP9)
+		if (!IsSupportedVideoCodec(out->videoCodec))
 		{
-			if (errMsg) *errMsg = "video codec is not VP9";
+			if (errMsg) *errMsg = "video codec is not VP9 or AV1";
 			return false;
 		}
 		if (!Vp9oIsValidVideoSize(par->width, par->height))
@@ -165,39 +173,41 @@ bool ProbeMedia(const prUTF16Char *path, MediaProbeInfo *out, std::string *errMs
 			return false;
 		}
 
+		const bool isSupportedVideo = IsSupportedVideoCodec(out->videoCodec);
 		const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(static_cast<AVPixelFormat>(par->format));
-		if (par->format == AV_PIX_FMT_NONE || desc == nullptr)
+		if (isSupportedVideo && (par->format == AV_PIX_FMT_NONE || desc == nullptr))
 		{
 			if (errMsg) *errMsg = "unknown pixel format";
 			return false;
 		}
-		if ((desc->flags & AV_PIX_FMT_FLAG_HWACCEL) != 0)
+		if (isSupportedVideo && (desc->flags & AV_PIX_FMT_FLAG_HWACCEL) != 0)
 		{
 			if (errMsg) *errMsg = "hardware-only pixel format not supported";
 			return false;
 		}
-		if ((desc->flags & AV_PIX_FMT_FLAG_RGB) != 0)
+		if (isSupportedVideo && (desc->flags & AV_PIX_FMT_FLAG_RGB) != 0)
 		{
 			if (errMsg) *errMsg = "RGB pixel format not supported";
 			return false;
 		}
-		if ((desc->flags & AV_PIX_FMT_FLAG_ALPHA) != 0)
+		if (isSupportedVideo && (desc->flags & AV_PIX_FMT_FLAG_ALPHA) != 0)
 		{
 			if (errMsg) *errMsg = "alpha not supported";
 			return false;
 		}
 
-		out->isYuv420p8 = (par->format == AV_PIX_FMT_YUV420P) ||
-						  (desc->comp[0].depth == 8 &&
-						   desc->log2_chroma_w == 1 && desc->log2_chroma_h == 1 &&
-						   (desc->flags & AV_PIX_FMT_FLAG_RGB) == 0);
-		if (!out->isYuv420p8)
+		out->isYuv420p8 = (desc != nullptr) &&
+						  ((par->format == AV_PIX_FMT_YUV420P) ||
+						   (desc->comp[0].depth == 8 &&
+						    desc->log2_chroma_w == 1 && desc->log2_chroma_h == 1 &&
+						    (desc->flags & AV_PIX_FMT_FLAG_RGB) == 0));
+		if (isSupportedVideo && !out->isYuv420p8)
 		{
 			if (errMsg) *errMsg = "pixel format is not 8-bit 4:2:0";
 			return false;
 		}
 
-		if (!Vp9oIsStrictBt709(par))
+		if (isSupportedVideo && !Vp9oIsStrictBt709(par))
 		{
 			if (errMsg) *errMsg = "only explicitly tagged BT.709 limited-range video is supported";
 			return false;
@@ -242,7 +252,7 @@ bool ProbeMedia(const prUTF16Char *path, MediaProbeInfo *out, std::string *errMs
 		out->sampleRate		= par->sample_rate;
 		out->channels		= par->ch_layout.nb_channels;
 
-		if (out->audioCodec != VP9O_CODEC_OPUS ||
+		if (out->audioCodec != WEBMIERE_CODEC_OPUS ||
 			par->ch_layout.nb_channels != 2 ||
 			par->sample_rate != 48000)
 		{

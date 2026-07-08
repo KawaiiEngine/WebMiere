@@ -589,10 +589,21 @@ bool VideoDecoder::OpenInternal(bool allowHw)
 	}
 
 	AVStream *st = mFmt->streams[mVideoStream];
-	if (st->codecpar->codec_id != AV_CODEC_ID_VP9)
+	const bool isVp9 = (st->codecpar->codec_id == AV_CODEC_ID_VP9);
+	const bool isAv1 = (st->codecpar->codec_id == AV_CODEC_ID_AV1);
+	const bool isSupportedVideo = isVp9 || isAv1;
+	if (!isSupportedVideo)
 	{
 		Close();
 		return false;
+	}
+	if (isAv1)
+	{
+		const AVCodec *nativeAv1 = avcodec_find_decoder_by_name("av1");
+		if (nativeAv1 != nullptr)
+		{
+			dec = nativeAv1;
+		}
 	}
 
 	{
@@ -603,17 +614,18 @@ bool VideoDecoder::OpenInternal(bool allowHw)
 			return false;
 		}
 		const AVPixFmtDescriptor *pd = av_pix_fmt_desc_get(static_cast<AVPixelFormat>(par->format));
-		if (par->format == AV_PIX_FMT_NONE || pd == nullptr ||
-			(pd->flags & AV_PIX_FMT_FLAG_HWACCEL) != 0 ||
-			(pd->flags & AV_PIX_FMT_FLAG_RGB) != 0 ||
-			(pd->flags & AV_PIX_FMT_FLAG_ALPHA) != 0 ||
-			pd->comp[0].depth != 8 ||
-			pd->log2_chroma_w != 1 || pd->log2_chroma_h != 1)
+		if (isSupportedVideo &&
+			(par->format == AV_PIX_FMT_NONE || pd == nullptr ||
+			 (pd->flags & AV_PIX_FMT_FLAG_HWACCEL) != 0 ||
+			 (pd->flags & AV_PIX_FMT_FLAG_RGB) != 0 ||
+			 (pd->flags & AV_PIX_FMT_FLAG_ALPHA) != 0 ||
+			 pd->comp[0].depth != 8 ||
+			 pd->log2_chroma_w != 1 || pd->log2_chroma_h != 1))
 		{
 			Close();
 			return false;
 		}
-		if (!Vp9oIsStrictBt709(par))
+		if (isSupportedVideo && !Vp9oIsStrictBt709(par))
 		{
 			Close();
 			return false;

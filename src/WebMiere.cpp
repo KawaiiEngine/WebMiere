@@ -1019,16 +1019,11 @@ SDKGetInfo8(
 		return imBadFile;
 	}
 
-	if (probe.videoCodec != VP9O_CODEC_VP9)
+	if (probe.videoCodec != WEBMIERE_CODEC_VP9 &&
+		probe.videoCodec != WEBMIERE_CODEC_AV1)
 	{
 		return imBadFile;
 	}
-
-	if (!probe.isYuv420p8)
-	{
-		return imBadFile;
-	}
-
 
 	if (stdParms->imInterfaceVer >= IMPORTMOD_VERSION_6)
 	{
@@ -1184,7 +1179,7 @@ SDKGetInfo8(
 	ldata->numFrames			= static_cast<csSDK_int64>(probe.numFrames);
 
 
-	if (probe.hasAudio && probe.audioCodec == VP9O_CODEC_OPUS && probe.channels == 2)
+	if (probe.hasAudio && probe.audioCodec == WEBMIERE_CODEC_OPUS && probe.channels == 2)
 	{
 		ldata->audioSampleRate	= static_cast<float>(probe.sampleRate);
 		ldata->numChannels		= probe.channels;

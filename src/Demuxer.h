@@ -17,12 +17,13 @@
 #include "PrSDKTypes.h"
 
 
-enum Vp9oCodec
+enum WebMiereCodec
 {
-	VP9O_CODEC_UNKNOWN = 0,
-	VP9O_CODEC_VP9,
-	VP9O_CODEC_OPUS,
-	VP9O_CODEC_OTHER
+	WEBMIERE_CODEC_UNKNOWN = 0,
+	WEBMIERE_CODEC_VP9,
+	WEBMIERE_CODEC_AV1,
+	WEBMIERE_CODEC_OPUS,
+	WEBMIERE_CODEC_OTHER
 };
 
 
@@ -30,7 +31,7 @@ struct MediaProbeInfo
 {
 
 	bool		hasVideo;
-	Vp9oCodec	videoCodec;
+	WebMiereCodec	videoCodec;
 	int			width;
 	int			height;
 	int			frameRateNum;
@@ -41,7 +42,7 @@ struct MediaProbeInfo
 
 
 	bool		hasAudio;
-	Vp9oCodec	audioCodec;
+	WebMiereCodec	audioCodec;
 	int			sampleRate;
 	int			channels;
 	int64_t		numAudioSampleFrames;

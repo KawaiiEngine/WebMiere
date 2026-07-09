@@ -189,6 +189,8 @@ A `.webm` or `.mkv` extension does not guarantee compatibility. Check that the f
 - Opus stereo at 48 kHz, or has no audio stream
 - Fully downloaded and not truncated
 
+For systems without NVIDIA AV1 hardware decode support, use VP9/Opus media instead of AV1/Opus.
+
 If another importer is installed, WebMiere is designed to take supported VP9/Opus and AV1 SDR/Opus media and pass unsupported media back to Premiere so another importer can handle it.
 
 If a YouTube download that should be supported does not import, download it again before investigating further. Incomplete downloads and unusual remuxing tools can produce files outside the normal supported YouTube-style VP9/Opus or AV1 SDR/Opus shape.
@@ -287,8 +289,8 @@ These environment variables are intended for diagnostics and development, not no
 
 | Setting | Values | Purpose |
 | --- | --- | --- |
-| `WEBMIERE_FORCE_CPU_DECODE` | `1` | Disables CUDA/NVDEC video decoding for diagnosis. The NVIDIA driver and CUDA/NPP runtime DLLs are still required because WebMiere initializes its runtime loader before decoding starts. |
-| `WEBMIERE_CUDA_SYNC_MODE` | `event`, `same_stream`, `producer`, `context` | Selects a CUDA surface-ordering strategy for comparison and diagnosis. |
+| `WEBMIERE_FORCE_CPU_DECODE` | `1` | Disables CUDA/NVDEC video decoding for VP9 diagnostics. AV1 still requires NVIDIA AV1 hardware decode support. |
+| `WEBMIERE_CUDA_SYNC_MODE` | `event`, `same_stream`, `producer`, `context` | Selects a CUDA surface-ordering strategy for comparison and diagnostics. |
 
 ## Build
 

@@ -25,6 +25,7 @@ WebMiere dynamically links to the current KawaiiEngine shared FFmpeg build.
 - Build identity: `n8.1.2-kawaiiengine-webmiere`
 - License reported by the runtime: `LGPL version 3 or later`
 - Build repository: `KawaiiEngine/WebMiere-FFmpeg`
+- Corresponding factory Release: https://github.com/KawaiiEngine/WebMiere-FFmpeg/releases/tag/ffmpeg-webmiere-8.1.2-4
 - Linkage: dynamic/shared DLL linkage
 - Local FFmpeg source changes: none
 - Installed license texts: `assets\licenses\FFmpeg-COPYING.LGPLv3.txt` and `assets\licenses\FFmpeg-COPYING.GPLv3.txt`
@@ -41,13 +42,26 @@ swresample-6.dll
 
 The exact FFmpeg source archives, configure records, license records, runtime probe output, source-change diff, and SHA-256 manifests are included in the WebMiere FFmpeg runtime and development release packages rather than installed into the plugin directory.
 
+The normal AV1 path uses NVIDIA AV1 hardware decode. CPU decoding is a diagnostic/development path: AV1 CPU decode uses libdav1d, while VP9 CPU decode uses the FFmpeg native decoder.
+
+## dav1d
+
+- Version: 1.5.1
+- Commit: `42b2b24fb8819f1ed3643aa9cf2a62f03868e3aa`
+- License: BSD 2-Clause
+- Linkage: the static dav1d library is linked into FFmpeg `avcodec-62.dll`.
+- No separate `dav1d.dll` or `libdav1d.dll` is shipped.
+- Installed license text: `assets\licenses\dav1d-COPYING.BSD-2-Clause.txt`, copied from the exact pinned upstream `COPYING`.
+- The exact corresponding dav1d source archive and full build records are provided by https://github.com/KawaiiEngine/WebMiere-FFmpeg/releases/tag/ffmpeg-webmiere-8.1.2-4.
+
 ## nv-codec-headers
 
 - Version: 13.0.19.0
 - Commit: `e844e5b26f46bb77479f063029595293aa8f812d`
 - Used to build FFmpeg NVDEC support.
 - The source archive is included in the WebMiere FFmpeg runtime and development release packages with the FFmpeg source material.
-- The headers carry MIT-style copyright notices in the source files.
+- Installed license notices: `assets\licenses\nv-codec-headers-MIT.txt`, extracted verbatim from the pinned source headers.
+- The headers carry complete MIT-style copyright, permission, and disclaimer notices in the pinned source archive.
 
 ## NVIDIA CUDA and NPP
 

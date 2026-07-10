@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/webmiere-hero.png" alt="WebMiere - YouTube VP9, AV1 SDR, and Opus importer for Adobe Premiere Pro" width="100%">
+  <img src="docs/images/webmiere-hero.png" alt="WebMiere - YouTube VP9, AV1, and Opus importer for Adobe Premiere Pro" width="100%">
 </p>
 
 # WebMiere
@@ -14,60 +14,48 @@ Import it, drop it on the timeline, and start editing.
 
 Repository: [KawaiiEngine/WebMiere](https://github.com/KawaiiEngine/WebMiere)
 
-> [!IMPORTANT]
-> **NVIDIA systems only.**
->
-> WebMiere requires a supported NVIDIA GPU, a compatible NVIDIA graphics driver, and the CUDA/NPP runtime DLLs included with the release.
->
-> GeForce RTX 20 / 30 / 40 / 50 series GPUs are recommended for VP9 hardware decoding.
->
-> AV1 SDR import requires AV1 hardware decode support. Use RTX 30 series or newer.
->
-> AMD-only, Intel-only, and macOS systems are not supported.
+## System Requirements
+|  | VP9 | AV1 |
+| :--- | :--- | :--- |
+| **Platform** | Windows x64 / NVIDIA | Windows x64 / NVIDIA |
+| **GPU** | **RTX 20 Series or Newer**<br><sub>Recommended</sub> | **RTX 30 Series or Newer**<br><sub>Required</sub> |
+| **Host** | Adobe Premiere Pro 26.x | Adobe Premiere Pro 26.x |
+| **Not Supported** | AMD-only, Intel-only, macOS | AMD-only, Intel-only, macOS |
 
 ## What WebMiere Does
 
-- Imports supported WebM/MKV files (YouTube-style VP9/Opus and AV1 SDR/Opus) directly into Premiere Pro
-- Uses NVIDIA NVDEC, CUDA, and NPP for the accelerated video path
-- Returns YUV420P directly when Premiere accepts it
-- Supports CPU VP9 decoding as a diagnostic fallback
-- Handles stereo 48 kHz Opus audio without requiring a separate WAV file
+- Imports supported YouTube-style VP9/Opus and AV1 SDR/Opus WebM/MKV directly into Premiere Pro
+- Uses NVIDIA NVDEC, CUDA, and NPP for accelerated video decoding
+- Avoids ProRes transcoding, proxy preparation, and separate WAV extraction
+- Handles stereo 48 kHz Opus audio directly
 - Prioritizes responsive timeline editing over broad format compatibility
 
 Typical workflow:
 
 ```text
-YouTube-style VP9 or AV1 SDR WebM/MKV + Opus -> Premiere Pro -> edit
+YouTube-style VP9 or AV1 WebM/MKV + Opus -> Premiere Pro -> edit
 ```
 
 WebMiere is deliberately specialized. It is not intended to replace a general-purpose Matroska importer.
 
 ## Supported Media
 
-| Area | Supported |
-| --- | --- |
-| Source type | Ordinary YouTube-style media streams |
-| Containers | WebM / Matroska (`.webm`, `.mkv`) |
-| Video codec | VP9 Profile 0; AV1 Main |
-| Pixel format | 8-bit YUV 4:2:0 |
-| Color | SDR, BT.709 matrix, limited range |
-| Frame rate | Constant frame rate |
-| Maximum dimensions | 8192 × 4320 |
-| Audio codec | Opus, optional |
-| Audio format | Stereo, 48 kHz |
-| Premiere video output | YUV420P 8-bit, with BGRA fallback when requested |
-| Premiere audio output | Planar 32-bit float |
-| Operating system | Windows x64 |
-| Host | Adobe Premiere Pro 26.x; built with the Premiere Pro 26.0 C++ SDK |
-| GPU | NVIDIA GPU required; AV1 requires NVIDIA AV1 hardware decode support |
+| Feature | Specification |
+| :--- | :--- |
+| **Source** | Ordinary YouTube-style media streams |
+| **Containers** | WebM / Matroska (`.webm`, `.mkv`) |
+| **Video** | VP9 Profile 0 / AV1 Main SDR |
+| **Pixel Format** | 8-bit YUV 4:2:0 |
+| **Color** | SDR, BT.709 matrix, limited range |
+| **Frame Rate** | Constant frame rate |
+| **Maximum Dimensions** | 8192 × 4320 |
+| **Audio** | Opus stereo, 48 kHz (optional) |
 
 ## YouTube and Frame Rate
 
-WebMiere is designed around the constant-frame-rate VP9 and AV1 SDR delivery streams normally encountered when downloading YouTube-style media, including common nominal rates such as 24, 25, 30, 48, 50, 59.94, and 60 fps.
+WebMiere is designed for the ordinary CFR VP9 and AV1 SDR delivery streams commonly encountered in YouTube-style media.
 
-A camera mode or video title may contain the term "VFR" while the actual YouTube-style VP9 or AV1 SDR stream is still ordinary CFR media. WebMiere cares about the encoded stream, not the title or the camera recording mode name.
-
-True variable-frame-rate files are not supported. They may still import and be reported as a nominal CFR stream, but frame selection, seeking, audio/video synchronization, editing behavior, and exported results are not guaranteed.
+In the media tested so far, YouTube delivery streams have been CFR. True VFR remains outside the supported media contract.
 
 ## Unsupported Media
 
@@ -79,8 +67,6 @@ True variable-frame-rate files are not supported. They may still import and be r
 - H.264, HEVC, ProRes, and other non-VP9/non-AV1 video codecs
 - AAC, Vorbis, and other non-Opus audio
 - Mono, surround, multichannel, or non-48 kHz Opus
-- AMD-only or Intel-only systems
-- macOS
 
 ## Installation
 
@@ -106,10 +92,13 @@ WebMiere.prm
 assets\
   WebMiere-App.ico
   licenses\
+    ARTWORK_POLICY.md
     README.md
     WebMiere-MPL-2.0.txt
     FFmpeg-COPYING.LGPLv3.txt
     FFmpeg-COPYING.GPLv3.txt
+    dav1d-COPYING.BSD-2-Clause.txt
+    nv-codec-headers-MIT.txt
     NVIDIA-CUDA-Toolkit-12.9-EULA.txt
     Microsoft-Visual-Cpp-Redistributable.txt
     THIRD_PARTY_NOTICES.md
@@ -149,6 +138,8 @@ An official release includes:
 - A compact installed license payload under `assets\licenses`
 - The matching WebMiere FFmpeg runtime and development release packages, including:
   - corresponding FFmpeg source archives
+  - corresponding nv-codec-headers source archives
+  - corresponding dav1d source archives
   - configure records
   - license records
   - runtime probe report
@@ -157,7 +148,7 @@ An official release includes:
 - Third-party license texts and notices applicable to the shipped binaries, including the NVIDIA CUDA Toolkit 12.9 EULA used for this build
 - GitHub Artifact Attestations where supported by the public release workflow
 
-The FFmpeg build recipe and provenance records are maintained in [KawaiiEngine/WebMiere-FFmpeg](https://github.com/KawaiiEngine/WebMiere-FFmpeg).
+The FFmpeg build recipe, corresponding source archives, and provenance records for this build are provided by the fixed [WebMiere FFmpeg factory Release](https://github.com/KawaiiEngine/WebMiere-FFmpeg/releases/tag/ffmpeg-webmiere-8.1.2-4).
 
 Review `THIRD_PARTY_NOTICES.md` and the licenses of the exact runtime DLLs before redistributing a package.
 
@@ -185,7 +176,7 @@ A `.webm` or `.mkv` extension does not guarantee compatibility. Check that the f
 - 8-bit YUV 4:2:0
 - Tagged as BT.709 matrix and limited range
 - SDR rather than HDR
-- For AV1 media, the system has an NVIDIA GPU with AV1 hardware decode support
+- For normal AV1 use, the system has an NVIDIA GPU with AV1 hardware decode support
 - Opus stereo at 48 kHz, or has no audio stream
 - Fully downloaded and not truncated
 
@@ -289,7 +280,7 @@ These environment variables are intended for diagnostics and development, not no
 
 | Setting | Values | Purpose |
 | --- | --- | --- |
-| `WEBMIERE_FORCE_CPU_DECODE` | `1` | Disables CUDA/NVDEC video decoding for VP9 diagnostics. AV1 still requires NVIDIA AV1 hardware decode support. |
+| `WEBMIERE_FORCE_CPU_DECODE` | `1` | Disables CUDA/NVDEC video decoding. VP9 uses the FFmpeg native software decoder and AV1 uses libdav1d. This is a diagnostic/development path and is not intended for normal use. |
 | `WEBMIERE_CUDA_SYNC_MODE` | `event`, `same_stream`, `producer`, `context` | Selects a CUDA surface-ordering strategy for comparison and diagnostics. |
 
 ## Build
@@ -318,6 +309,8 @@ swresample-6.dll
 ```
 
 The development package contains the matching headers and five MSVC import libraries. Do not substitute development files from another FFmpeg build.
+
+dav1d 1.5.1 is BSD 2-Clause licensed and statically linked into `avcodec-62.dll`; no `dav1d.dll` or `libdav1d.dll` is distributed. Its `dav1d-COPYING.BSD-2-Clause.txt` license text is installed, and the corresponding source and build records are provided by the fixed [WebMiere FFmpeg factory Release](https://github.com/KawaiiEngine/WebMiere-FFmpeg/releases/tag/ffmpeg-webmiere-8.1.2-4).
 
 Default dependency roots:
 

@@ -580,9 +580,9 @@ bool VideoDecoder::OpenInternal(bool allowHw)
 		return false;
 	}
 
-	const AVCodec *dec = nullptr;
-	mVideoStream = av_find_best_stream(mFmt, AVMEDIA_TYPE_VIDEO, -1, -1, &dec, 0);
-	if (mVideoStream < 0 || dec == nullptr)
+	const AVCodec *defaultDec = nullptr;
+	mVideoStream = av_find_best_stream(mFmt, AVMEDIA_TYPE_VIDEO, -1, -1, &defaultDec, 0);
+	if (mVideoStream < 0 || defaultDec == nullptr)
 	{
 		Close();
 		return false;
@@ -597,15 +597,6 @@ bool VideoDecoder::OpenInternal(bool allowHw)
 		Close();
 		return false;
 	}
-	if (isAv1)
-	{
-		const AVCodec *nativeAv1 = avcodec_find_decoder_by_name("av1");
-		if (nativeAv1 != nullptr)
-		{
-			dec = nativeAv1;
-		}
-	}
-
 	{
 		const AVCodecParameters *par = st->codecpar;
 		if (!Vp9oIsValidVideoSize(par->width, par->height))
@@ -672,11 +663,20 @@ bool VideoDecoder::OpenInternal(bool allowHw)
 
 	auto tryOpenCodec = [&](bool useHw) -> bool
 	{
+		const AVCodec *attemptDec = defaultDec;
+		if (isAv1)
+		{
+			attemptDec = avcodec_find_decoder_by_name(useHw ? "av1" : "libdav1d");
+			if (attemptDec == nullptr)
+			{
+				return false;
+			}
+		}
 		if (mCodecCtx)
 		{
 			avcodec_free_context(&mCodecCtx);
 		}
-		mCodecCtx = avcodec_alloc_context3(dec);
+		mCodecCtx = avcodec_alloc_context3(attemptDec);
 		if (mCodecCtx == nullptr)
 		{
 			return false;
@@ -706,7 +706,7 @@ bool VideoDecoder::OpenInternal(bool allowHw)
 			mUseHw = false;
 		}
 
-		return avcodec_open2(mCodecCtx, dec, nullptr) == 0;
+		return avcodec_open2(mCodecCtx, attemptDec, nullptr) == 0;
 	};
 
 	bool opened = false;

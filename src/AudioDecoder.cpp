@@ -131,7 +131,7 @@ void AudioDecoder::Close()
 }
 
 
-bool AudioDecoder::Open(const prUTF16Char *path)
+bool AudioDecoder::Open(const prUTF16Char *path, int ffmpegAudioStreamIndex)
 {
 	Close();
 
@@ -152,15 +152,21 @@ bool AudioDecoder::Open(const prUTF16Char *path)
 		return false;
 	}
 
-	const AVCodec *dec = nullptr;
-	mAudioStream = av_find_best_stream(mFmt, AVMEDIA_TYPE_AUDIO, -1, -1, &dec, 0);
-	if (mAudioStream < 0 || dec == nullptr)
+	if (ffmpegAudioStreamIndex < 0 ||
+		static_cast<unsigned int>(ffmpegAudioStreamIndex) >= mFmt->nb_streams)
 	{
 		Close();
 		return false;
 	}
 
+	mAudioStream = ffmpegAudioStreamIndex;
 	AVStream *st = mFmt->streams[mAudioStream];
+	if (st == nullptr || st->codecpar == nullptr ||
+		st->codecpar->codec_type != AVMEDIA_TYPE_AUDIO)
+	{
+		Close();
+		return false;
+	}
 
 
 	if (st->codecpar->codec_id != AV_CODEC_ID_OPUS)
@@ -176,6 +182,13 @@ bool AudioDecoder::Open(const prUTF16Char *path)
 	}
 
 	if (st->codecpar->sample_rate != 48000)
+	{
+		Close();
+		return false;
+	}
+
+	const AVCodec *dec = avcodec_find_decoder(st->codecpar->codec_id);
+	if (dec == nullptr)
 	{
 		Close();
 		return false;
@@ -383,12 +396,18 @@ bool AudioDecoder::DecodeAppendOneFrame()
 
 			if (!EnsureSwr(mFrame))
 			{
+				mLastReadError = AVERROR_EXTERNAL;
 				return false;
 			}
 
 			const int inSamples = mFrame->nb_samples;
 			const int outMax    = static_cast<int>(swr_get_out_samples(mSwr, inSamples));
-			if (outMax <= 0)
+			if (outMax < 0)
+			{
+				mLastReadError = outMax;
+				return false;
+			}
+			if (outMax == 0)
 			{
 				return true;
 			}
@@ -414,6 +433,7 @@ bool AudioDecoder::DecodeAppendOneFrame()
 								  mFrame->extended_data, inSamples);
 			if (got < 0)
 			{
+				mLastReadError = got;
 				return false;
 			}
 
@@ -442,6 +462,7 @@ bool AudioDecoder::DecodeAppendOneFrame()
 		}
 		if (ret != AVERROR(EAGAIN))
 		{
+			mLastReadError = ret;
 			return false;
 		}
 
@@ -453,6 +474,11 @@ bool AudioDecoder::DecodeAppendOneFrame()
 			{
 				av_packet_unref(mPendingPacket);
 				mHasPendingPacket = false;
+				if (sret < 0)
+				{
+					mLastReadError = sret;
+					return false;
+				}
 			}
 			continue;
 		}
@@ -473,6 +499,7 @@ bool AudioDecoder::DecodeAppendOneFrame()
 			}
 			else if (sret != AVERROR(EAGAIN))
 			{
+				mLastReadError = sret;
 				return false;
 			}
 			continue;
@@ -490,6 +517,12 @@ bool AudioDecoder::DecodeAppendOneFrame()
 				av_packet_move_ref(mPendingPacket, mPacket);
 				mHasPendingPacket = true;
 				continue;
+			}
+			if (sret < 0)
+			{
+				mLastReadError = sret;
+				av_packet_unref(mPacket);
+				return false;
 			}
 		}
 		av_packet_unref(mPacket);
@@ -516,9 +549,11 @@ bool AudioDecoder::SeekToSample(int64_t targetSample)
 			(targetSample > preroll) ? (targetSample - preroll) : 0;
 		int64_t ts = av_rescale_q(seekSample, srBase, tb) + mAudioStartTime;
 
-		if (av_seek_frame(mFmt, mAudioStream, ts, AVSEEK_FLAG_BACKWARD) < 0)
+		const int seekResult = av_seek_frame(mFmt, mAudioStream, ts, AVSEEK_FLAG_BACKWARD);
+		if (seekResult < 0)
 		{
-					return false;
+			mLastReadError = seekResult;
+			return false;
 		}
 
 		avcodec_flush_buffers(mCodecCtx);
@@ -565,7 +600,8 @@ bool AudioDecoder::SeekToSample(int64_t targetSample)
 
 	if (!haveSeekStart || mHeadSample > targetSample)
 	{
-			return false;
+		mLastReadError = AVERROR_INVALIDDATA;
+		return false;
 	}
 
 	int64_t toDrop = targetSample - mHeadSample;
@@ -598,6 +634,10 @@ bool AudioDecoder::SeekToSample(int64_t targetSample)
 	}
 	if (toDrop > 0)
 	{
+		if (mLastReadError == 0 && !mEof)
+		{
+			mLastReadError = AVERROR_INVALIDDATA;
+		}
 		return false;
 	}
 

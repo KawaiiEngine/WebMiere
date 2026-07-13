@@ -143,7 +143,6 @@ bool ProbeMedia(const prUTF16Char *path, MediaProbeInfo *out, std::string *errMs
 	}
 
 	int vIdx = av_find_best_stream(fmt.get(), AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
-	int aIdx = av_find_best_stream(fmt.get(), AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
 
 
 	if (vIdx < 0)
@@ -242,17 +241,35 @@ bool ProbeMedia(const prUTF16Char *path, MediaProbeInfo *out, std::string *errMs
 	}
 
 
-	if (aIdx >= 0)
+	for (unsigned int streamIndex = 0; streamIndex < fmt->nb_streams; streamIndex++)
 	{
-		AVStream			*st  = fmt->streams[aIdx];
+		AVStream			*st  = fmt->streams[streamIndex];
+		if (st == nullptr || st->codecpar == nullptr ||
+			st->codecpar->codec_type != AVMEDIA_TYPE_AUDIO)
+		{
+			continue;
+		}
+		if (out->audioStreamCount >= kVp9oMaxAudioStreams)
+		{
+			if (errMsg) *errMsg = "more than 6 audio streams";
+			return false;
+		}
+
 		AVCodecParameters	*par = st->codecpar;
+		MediaProbeInfo::AudioStreamProbeInfo &audio =
+			out->audioStreams[out->audioStreamCount];
 
-		out->hasAudio		= true;
-		out->audioCodec		= MapCodec(par->codec_id);
-		out->sampleRate		= par->sample_rate;
-		out->channels		= par->ch_layout.nb_channels;
+		audio.ffmpegStreamIndex		= static_cast<int>(streamIndex);
+		audio.codec					= MapCodec(par->codec_id);
+		audio.sampleRate				= par->sample_rate;
+		audio.channels				= par->ch_layout.nb_channels;
+		audio.startTime				= st->start_time;
+		audio.timeBaseNum			= st->time_base.num;
+		audio.timeBaseDen			= st->time_base.den;
+		audio.initialPaddingSamples	= par->initial_padding;
+		audio.seekPrerollSamples		= par->seek_preroll;
 
-		if (out->audioCodec != WEBMIERE_CODEC_OPUS ||
+		if (audio.codec != WEBMIERE_CODEC_OPUS ||
 			par->ch_layout.nb_channels != 2 ||
 			par->sample_rate != 48000)
 		{
@@ -261,11 +278,46 @@ bool ProbeMedia(const prUTF16Char *path, MediaProbeInfo *out, std::string *errMs
 		}
 
 		double durSec = StreamDurationSeconds(fmt.get(), st);
-		out->numAudioSampleFrames =
+		audio.sourceSampleFrames =
 			static_cast<int64_t>(std::llround(durSec * static_cast<double>(par->sample_rate)));
-		if (out->numAudioSampleFrames < 0)
+		if (audio.sourceSampleFrames < 0)
 		{
-			out->numAudioSampleFrames = 0;
+			audio.sourceSampleFrames = 0;
+		}
+		out->audioStreamCount++;
+	}
+
+	if (out->audioStreamCount > 1)
+	{
+		const MediaProbeInfo::AudioStreamProbeInfo &primary = out->audioStreams[0];
+		if (primary.startTime == AV_NOPTS_VALUE ||
+			primary.timeBaseNum <= 0 || primary.timeBaseDen <= 0)
+		{
+			if (errMsg) *errMsg = "missing audio start timestamp";
+			return false;
+		}
+		const AVRational sampleBase = { 1, 48000 };
+		const AVRational primaryTimeBase = { primary.timeBaseNum, primary.timeBaseDen };
+		const int64_t primaryStartSample =
+			av_rescale_q(primary.startTime, primaryTimeBase, sampleBase);
+
+		for (int i = 1; i < out->audioStreamCount; i++)
+		{
+			const MediaProbeInfo::AudioStreamProbeInfo &audio = out->audioStreams[i];
+			if (audio.startTime == AV_NOPTS_VALUE ||
+				audio.timeBaseNum <= 0 || audio.timeBaseDen <= 0)
+			{
+				if (errMsg) *errMsg = "missing audio start timestamp";
+				return false;
+			}
+			const AVRational audioTimeBase = { audio.timeBaseNum, audio.timeBaseDen };
+			const int64_t audioStartSample =
+				av_rescale_q(audio.startTime, audioTimeBase, sampleBase);
+			if (audioStartSample != primaryStartSample)
+			{
+				if (errMsg) *errMsg = "audio streams do not share the same start sample";
+				return false;
+			}
 		}
 	}
 

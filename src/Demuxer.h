@@ -15,6 +15,7 @@
 
 
 #include "PrSDKTypes.h"
+#include "WebMiereLimits.h"
 
 
 enum WebMiereCodec
@@ -41,11 +42,20 @@ struct MediaProbeInfo
 	bool		isYuv420p8;
 
 
-	bool		hasAudio;
-	WebMiereCodec	audioCodec;
-	int			sampleRate;
-	int			channels;
-	int64_t		numAudioSampleFrames;
+	int			audioStreamCount;
+	struct AudioStreamProbeInfo
+	{
+		int			ffmpegStreamIndex;
+		WebMiereCodec	codec;
+		int			sampleRate;
+		int			channels;
+		int64_t		sourceSampleFrames;
+		int64_t		startTime;
+		int			timeBaseNum;
+		int			timeBaseDen;
+		int			initialPaddingSamples;
+		int			seekPrerollSamples;
+	} audioStreams[kVp9oMaxAudioStreams];
 };
 
 

@@ -12,6 +12,7 @@
 #include "VideoDecoder.h"
 #include "AudioDecoder.h"
 #include "WebMiereLimits.h"
+#include "PrSDKImporterFileManagerSuite.h"
 
 #include <string>
 #include <cstring>
@@ -193,6 +194,51 @@ Vp9oHasRequiredSuites(imStdParms *stdParms)
 }
 
 
+static bool
+Vp9oSetImporterStreamFileCount(
+	imStdParms		*stdParms,
+	csSDK_uint32	importerID,
+	csSDK_int32		streamIndex,
+	csSDK_int32		fileCount)
+{
+	if (!Vp9oHasRequiredSuites(stdParms) || fileCount <= 0)
+	{
+		return false;
+	}
+
+	SPBasicSuite *basicSuite = stdParms->piSuites->utilFuncs->getSPBasicSuite();
+	if (basicSuite == NULL)
+	{
+		return false;
+	}
+
+	const void *fileManagerSuiteRaw = NULL;
+	const SPErr acquireResult = basicSuite->AcquireSuite(
+		kPrSDKImporterFileManagerSuite,
+		kPrSDKImporterFileManagerSuiteVersion,
+		&fileManagerSuiteRaw);
+	const PrSDKImporterFileManagerSuite *fileManagerSuite =
+		static_cast<const PrSDKImporterFileManagerSuite*>(fileManagerSuiteRaw);
+	if (acquireResult != kSPNoError || fileManagerSuite == NULL)
+	{
+		if (acquireResult == kSPNoError)
+		{
+			basicSuite->ReleaseSuite(
+				kPrSDKImporterFileManagerSuite,
+				kPrSDKImporterFileManagerSuiteVersion);
+		}
+		return false;
+	}
+
+	const prSuiteError setResult = fileManagerSuite->SetImporterStreamFileCount(
+		importerID, streamIndex, fileCount);
+	basicSuite->ReleaseSuite(
+		kPrSDKImporterFileManagerSuite,
+		kPrSDKImporterFileManagerSuiteVersion);
+	return setResult == suiteError_NoError;
+}
+
+
 static void
 Vp9oDisposePrivateDataHandle(imStdParms *stdParms, ImporterLocalRecH ldataH, void **privateData)
 {
@@ -280,6 +326,83 @@ Vp9oSaturatingAddAudioSamples(PrAudioSample a, int64_t b)
 		return maxValue;
 	}
 	return a + static_cast<PrAudioSample>(b);
+}
+
+
+static void
+Vp9oResetFileInfoStreamFields(imFileInfoRec8 *fileInfo8)
+{
+	fileInfo8->hasVideo = kPrFalse;
+	fileInfo8->hasAudio = kPrFalse;
+	fileInfo8->streamsAsComp = kPrFalse;
+	fileInfo8->streamName[0] = 0;
+
+	fileInfo8->vidScale = 0;
+	fileInfo8->vidSampleSize = 0;
+	fileInfo8->vidDuration = 0;
+	fileInfo8->vidDurationInFrames = 0;
+	fileInfo8->vidInfo.subType = 0;
+	fileInfo8->vidInfo.imageWidth = 0;
+	fileInfo8->vidInfo.imageHeight = 0;
+	fileInfo8->vidInfo.depth = 0;
+	fileInfo8->vidInfo.fieldType = prFieldsNone;
+	fileInfo8->vidInfo.alphaType = alphaNone;
+	fileInfo8->vidInfo.pixelAspectNum = 0;
+	fileInfo8->vidInfo.pixelAspectDen = 0;
+	fileInfo8->vidInfo.supportsAsyncIO = kPrFalse;
+	fileInfo8->vidInfo.supportsGetSourceVideo = kPrFalse;
+	fileInfo8->vidInfo.hasPulldown = kPrFalse;
+
+	fileInfo8->audInfo.numChannels = 0;
+	fileInfo8->audInfo.sampleRate = 0.0f;
+	fileInfo8->audInfo.sampleType = kPrAudioSampleType_Compressed;
+	fileInfo8->audDuration = 0;
+}
+
+
+static bool
+Vp9oApplyProbeStreamMapping(
+	ImporterLocalRecP		ldata,
+	const MediaProbeInfo	&probe,
+	csSDK_int32				premiereStreamIdx)
+{
+	if (ldata == NULL)
+	{
+		return false;
+	}
+
+	const int streamCount = (probe.audioStreamCount > 0) ? probe.audioStreamCount : 1;
+	if (premiereStreamIdx < 0 || premiereStreamIdx >= streamCount)
+	{
+		return false;
+	}
+
+	ldata->premiereStreamIdx = premiereStreamIdx;
+	ldata->hasVideo = (premiereStreamIdx == 0) ? kPrTrue : kPrFalse;
+	ldata->hasAudio = (probe.audioStreamCount > 0) ? kPrTrue : kPrFalse;
+	ldata->width = probe.width;
+	ldata->height = probe.height;
+	ldata->frameRateScale = probe.frameRateNum;
+	ldata->frameRateSampleSize = probe.frameRateDen;
+	ldata->numFrames = static_cast<csSDK_int64>(probe.numFrames);
+
+	ldata->audioSampleRate = 0.0f;
+	ldata->numChannels = 0;
+	ldata->numSampleFrames = 0;
+	ldata->ffmpegAudioStreamIndex = -1;
+	if (ldata->hasAudio)
+	{
+		const MediaProbeInfo::AudioStreamProbeInfo &audio =
+			probe.audioStreams[premiereStreamIdx];
+		ldata->audioSampleRate = static_cast<float>(audio.sampleRate);
+		ldata->numChannels = audio.channels;
+		ldata->numSampleFrames = static_cast<PrAudioSample>(audio.sourceSampleFrames);
+		ldata->ffmpegAudioStreamIndex = audio.ffmpegStreamIndex;
+	}
+
+	ldata->savedAudioPosition = 0;
+	ldata->savedSequentialAudioPosition = 0;
+	return true;
 }
 
 
@@ -1011,12 +1134,18 @@ SDKGetInfo8(
 	{
 		return imOtherErr;
 	}
+	Vp9oResetFileInfoStreamFields(fileInfo8);
 
 	MediaProbeInfo	probe;
 	std::string		probeErr;
 	if (!ProbeMedia(fileAccessInfo8->filepath, &probe, &probeErr))
 	{
 		return imBadFile;
+	}
+	const int premiereStreamCount = (probe.audioStreamCount > 0) ? probe.audioStreamCount : 1;
+	if (fileInfo8->streamIdx < 0 || fileInfo8->streamIdx >= premiereStreamCount)
+	{
+		return imBadStreamIndex;
 	}
 
 	if (probe.videoCodec != WEBMIERE_CODEC_VP9 &&
@@ -1033,9 +1162,6 @@ SDKGetInfo8(
 	{
 		fileInfo8->accessModes = kRandomAccessImport;
 	}
-	fileInfo8->vidInfo.supportsAsyncIO			= kPrFalse;
-	fileInfo8->vidInfo.supportsGetSourceVideo	= kPrTrue;
-	fileInfo8->vidInfo.hasPulldown				= kPrFalse;
 	fileInfo8->hasDataRate						= kPrFalse;
 
 
@@ -1072,6 +1198,10 @@ SDKGetInfo8(
 	{
 		std::memset(ldata, 0, sizeof(ImporterLocalRec));
 		ldata->fileRef = imInvalidHandleValue;
+	}
+	else if (ldata->premiereStreamIdx != fileInfo8->streamIdx)
+	{
+		return imBadFile;
 	}
 	if (!Vp9oEnsureLocks(ldata))
 	{
@@ -1170,43 +1300,31 @@ SDKGetInfo8(
 		return imBadFile;
 	}
 
-	ldata->importerID			= fileInfo8->vidInfo.importerID;
-	ldata->width				= probe.width;
-	ldata->height				= probe.height;
-	ldata->frameRateScale		= frScale;
-	ldata->frameRateSampleSize	= frSample;
-	ldata->frameRatePrTime		= frameRatePrTime;
-	ldata->numFrames			= static_cast<csSDK_int64>(probe.numFrames);
-
-
-	if (probe.hasAudio && probe.audioCodec == WEBMIERE_CODEC_OPUS && probe.channels == 2)
+	if (!Vp9oApplyProbeStreamMapping(ldata, probe, fileInfo8->streamIdx))
 	{
-		ldata->audioSampleRate	= static_cast<float>(probe.sampleRate);
-		ldata->numChannels		= probe.channels;
-		ldata->numSampleFrames	= static_cast<PrAudioSample>(probe.numAudioSampleFrames);
+		return imBadStreamIndex;
 	}
-	else
-	{
-		ldata->audioSampleRate	= 0.0f;
-		ldata->numChannels		= 0;
-		ldata->numSampleFrames	= 0;
-	}
-	ldata->savedAudioPosition = 0;
-	ldata->savedSequentialAudioPosition = 0;
+	ldata->importerID = fileInfo8->vidInfo.importerID;
+	ldata->frameRatePrTime = frameRatePrTime;
 
 
-	fileInfo8->hasVideo					= kPrTrue;
-	fileInfo8->vidInfo.subType			= WEBMIERE_VIDEO_SUBTYPE_VP9;
-	fileInfo8->vidInfo.imageWidth		= ldata->width;
-	fileInfo8->vidInfo.imageHeight		= ldata->height;
-	fileInfo8->vidInfo.depth			= 32;
-	fileInfo8->vidInfo.fieldType		= prFieldsNone;
-	fileInfo8->vidInfo.alphaType		= alphaNone;
-	fileInfo8->vidInfo.pixelAspectNum	= 1;
-	fileInfo8->vidInfo.pixelAspectDen	= 1;
-	fileInfo8->vidScale					= ldata->frameRateScale;
-	fileInfo8->vidSampleSize			= ldata->frameRateSampleSize;
+	if (ldata->hasVideo)
 	{
+		fileInfo8->hasVideo					= kPrTrue;
+		fileInfo8->vidInfo.subType			= WEBMIERE_VIDEO_SUBTYPE_VP9;
+		fileInfo8->vidInfo.imageWidth		= ldata->width;
+		fileInfo8->vidInfo.imageHeight		= ldata->height;
+		fileInfo8->vidInfo.depth			= 32;
+		fileInfo8->vidInfo.fieldType		= prFieldsNone;
+		fileInfo8->vidInfo.alphaType		= alphaNone;
+		fileInfo8->vidInfo.pixelAspectNum	= 1;
+		fileInfo8->vidInfo.pixelAspectDen	= 1;
+		fileInfo8->vidInfo.supportsAsyncIO			= kPrFalse;
+		fileInfo8->vidInfo.supportsGetSourceVideo	= kPrTrue;
+		fileInfo8->vidInfo.hasPulldown				= kPrFalse;
+		fileInfo8->vidScale					= ldata->frameRateScale;
+		fileInfo8->vidSampleSize			= ldata->frameRateSampleSize;
+
 		const csSDK_int64 numFrames = ldata->numFrames;
 		const csSDK_int64 sampleSize = static_cast<csSDK_int64>(fileInfo8->vidSampleSize);
 		csSDK_int64 legacyVidDuration = 0;
@@ -1225,7 +1343,7 @@ SDKGetInfo8(
 	}
 
 
-	if (ldata->numChannels > 0)
+	if (ldata->hasAudio)
 	{
 		fileInfo8->hasAudio				= kPrTrue;
 		fileInfo8->audInfo.numChannels	= ldata->numChannels;
@@ -1233,9 +1351,16 @@ SDKGetInfo8(
 		fileInfo8->audInfo.sampleType	= kPrAudioSampleType_Compressed;
 		fileInfo8->audDuration			= ldata->numSampleFrames;
 	}
-	else
+
+	if (premiereStreamCount > 1)
 	{
-		fileInfo8->hasAudio				= kPrFalse;
+		if (fileInfo8->streamIdx == 0)
+		{
+			fileInfo8->streamsAsComp = kPrFalse;
+		}
+		result = (fileInfo8->streamIdx == premiereStreamCount - 1)
+			? imBadStreamIndex
+			: imIterateStreams;
 	}
 
 	return result;
@@ -1295,6 +1420,9 @@ SDKOpenFile8(
 	{
 		std::memset(ldata, 0, sizeof(ImporterLocalRec));
 		ldata->fileRef = imInvalidHandleValue;
+		ldata->premiereStreamIdx = fileOpenRec8->inStreamIdx;
+		ldata->hasVideo = (fileOpenRec8->inStreamIdx == 0) ? kPrTrue : kPrFalse;
+		ldata->ffmpegAudioStreamIndex = -1;
 	}
 	if (!Vp9oEnsureLocks(ldata))
 	{
@@ -1304,6 +1432,16 @@ SDKOpenFile8(
 			Vp9oDisposePrivateDataHandle(stdParms, ldataH, &fileOpenRec8->privatedata);
 		}
 		return imMemErr;
+	}
+	if (ldata->premiereStreamIdx != fileOpenRec8->inStreamIdx)
+	{
+		if (freshAlloc)
+		{
+			Vp9oFreeLocks(ldataH);
+			handleLock.Unlock();
+			Vp9oDisposePrivateDataHandle(stdParms, ldataH, &fileOpenRec8->privatedata);
+		}
+		return imBadFile;
 	}
 
 	if (!freshAlloc)
@@ -1325,6 +1463,19 @@ SDKOpenFile8(
 		*fileRef = imInvalidHandleValue;
 		fileOpenRec8->fileinfo.fileref = imInvalidHandleValue;
 		return imBadFile;
+	}
+	if (freshAlloc)
+	{
+		MediaProbeInfo probe;
+		std::string probeErr;
+		if (!ProbeMedia(fileOpenRec8->fileinfo.filepath, &probe, &probeErr) ||
+			!Vp9oApplyProbeStreamMapping(ldata, probe, fileOpenRec8->inStreamIdx))
+		{
+			Vp9oFreeLocks(ldataH);
+			handleLock.Unlock();
+			Vp9oDisposePrivateDataHandle(stdParms, ldataH, &fileOpenRec8->privatedata);
+			return imBadFile;
+		}
 	}
 
 
@@ -1356,8 +1507,12 @@ SDKOpenFile8(
 	fileOpenRec8->outExtraMemoryUsage = 0;
 
 
-	VideoDecoder *openedDecoder = EnsureDecoder(ldataH);
-	if (openedDecoder == NULL)
+	VideoDecoder *openedDecoder = NULL;
+	if (ldata->hasVideo)
+	{
+		openedDecoder = EnsureDecoder(ldataH);
+	}
+	if (ldata->hasVideo && openedDecoder == NULL)
 	{
 		ReleaseOpenResources(ldata, fileRef);
 		ldata->fileRef					= imInvalidHandleValue;
@@ -1371,7 +1526,7 @@ SDKOpenFile8(
 		}
 		return imBadFile;
 	}
-	if (!Vp9oIsValidVideoSize(ldata->width, ldata->height))
+	if (ldata->hasVideo && !Vp9oIsValidVideoSize(ldata->width, ldata->height))
 	{
 		ldata->width  = openedDecoder->Width();
 		ldata->height = openedDecoder->Height();
@@ -1379,7 +1534,7 @@ SDKOpenFile8(
 	fileOpenRec8->outExtraMemoryUsage = 0;
 
 
-	if (ldata->numChannels > 0 && EnsureAudioDecoder(ldataH) == NULL)
+	if (ldata->hasAudio && EnsureAudioDecoder(ldataH) == NULL)
 	{
 		ReleaseOpenResources(ldata, fileRef);
 		ldata->fileRef					= imInvalidHandleValue;
@@ -1392,6 +1547,29 @@ SDKOpenFile8(
 			Vp9oDisposePrivateDataHandle(stdParms, ldataH, &fileOpenRec8->privatedata);
 		}
 		return imBadFile;
+	}
+
+	const csSDK_int32 maxOpenFileCount =
+		1 +
+		(ldata->hasVideo ? 1 : 0) +
+		(ldata->hasAudio ? 2 : 0);
+	if (!Vp9oSetImporterStreamFileCount(
+			stdParms,
+			static_cast<csSDK_uint32>(fileOpenRec8->inImporterID),
+			fileOpenRec8->inStreamIdx,
+			maxOpenFileCount))
+	{
+		ReleaseOpenResources(ldata, fileRef);
+		ldata->fileRef					= imInvalidHandleValue;
+		*fileRef						= imInvalidHandleValue;
+		fileOpenRec8->fileinfo.fileref	= imInvalidHandleValue;
+		if (freshAlloc)
+		{
+			Vp9oFreeLocks(ldataH);
+			handleLock.Unlock();
+			Vp9oDisposePrivateDataHandle(stdParms, ldataH, &fileOpenRec8->privatedata);
+		}
+		return imOtherErr;
 	}
 
 	return result;
@@ -1499,6 +1677,10 @@ SDKGetSourceVideo(
 	Vp9oHandleLock handleLock(stdParms, ldataH);
 	ImporterLocalRecP ldata = handleLock.Get();
 	if (ldata == NULL)
+	{
+		return imOtherErr;
+	}
+	if (!ldata->hasVideo)
 	{
 		return imOtherErr;
 	}
@@ -1670,9 +1852,26 @@ SDKReadAudioSamples(
 	}
 
 
-	if (ad != NULL && ad->Channels() == numChannels)
+	if (ad == NULL || ad->Channels() != numChannels)
 	{
-		ad->ReadSamples(static_cast<int64_t>(startSample), reqSize, audioRec7->buffer, numChannels);
+		return imFileReadFailed;
+	}
+
+	int64_t decodeSize = reqSize;
+	if (total > 0)
+	{
+		if (startSample >= total)
+		{
+			decodeSize = 0;
+		}
+		else if (decodeSize > static_cast<int64_t>(total - startSample))
+		{
+			decodeSize = static_cast<int64_t>(total - startSample);
+		}
+	}
+	if (decodeSize > 0)
+	{
+		ad->ReadSamples(static_cast<int64_t>(startSample), decodeSize, audioRec7->buffer, numChannels);
 		if (ad->HadReadError())
 		{
 			return imFileReadFailed;
@@ -1711,7 +1910,11 @@ SDKImportAudio7(
 	ImporterLocalRecP ldata = handleLock.Get();
 	if (ldata == NULL)
 	{
-		return malNoError;
+		return imOtherErr;
+	}
+	if (!ldata->hasAudio)
+	{
+		return imOtherErr;
 	}
 	if (!Vp9oEnsureLocks(ldata))
 	{
@@ -1743,7 +1946,11 @@ SDKResetSequentialAudio(
 	ImporterLocalRecP ldata = handleLock.Get();
 	if (ldata == NULL)
 	{
-		return malNoError;
+		return imOtherErr;
+	}
+	if (!ldata->hasAudio)
+	{
+		return imOtherErr;
 	}
 	if (!Vp9oEnsureLocks(ldata))
 	{
@@ -1781,7 +1988,11 @@ SDKGetSequentialAudio(
 	ImporterLocalRecP ldata = handleLock.Get();
 	if (ldata == NULL)
 	{
-		return malNoError;
+		return imOtherErr;
+	}
+	if (!ldata->hasAudio)
+	{
+		return imOtherErr;
 	}
 	if (!Vp9oEnsureLocks(ldata))
 	{
@@ -1798,6 +2009,10 @@ static VideoDecoder *
 EnsureDecoder(ImporterLocalRecH ldataH)
 {
 	if (ldataH == NULL || *ldataH == NULL)
+	{
+		return NULL;
+	}
+	if (!(*ldataH)->hasVideo)
 	{
 		return NULL;
 	}
@@ -1832,6 +2047,10 @@ EnsureAudioDecoder(ImporterLocalRecH ldataH)
 	{
 		return NULL;
 	}
+	if (!(*ldataH)->hasAudio || (*ldataH)->ffmpegAudioStreamIndex < 0)
+	{
+		return NULL;
+	}
 
 	Vp9oScopedLock lock(Vp9oAudioLock(ldataH));
 
@@ -1840,7 +2059,7 @@ EnsureAudioDecoder(ImporterLocalRecH ldataH)
 		try
 		{
 			std::unique_ptr<AudioDecoder> ad(new AudioDecoder());
-			if (!ad->Open((*ldataH)->filePath))
+			if (!ad->Open((*ldataH)->filePath, (*ldataH)->ffmpegAudioStreamIndex))
 			{
 				return NULL;
 			}
@@ -1863,6 +2082,10 @@ EnsureSequentialAudioDecoder(ImporterLocalRecH ldataH)
 	{
 		return NULL;
 	}
+	if (!(*ldataH)->hasAudio || (*ldataH)->ffmpegAudioStreamIndex < 0)
+	{
+		return NULL;
+	}
 
 	Vp9oScopedLock lock(Vp9oAudioLock(ldataH));
 
@@ -1871,7 +2094,7 @@ EnsureSequentialAudioDecoder(ImporterLocalRecH ldataH)
 		try
 		{
 			std::unique_ptr<AudioDecoder> ad(new AudioDecoder());
-			if (!ad->Open((*ldataH)->filePath))
+			if (!ad->Open((*ldataH)->filePath, (*ldataH)->ffmpegAudioStreamIndex))
 			{
 				return NULL;
 			}

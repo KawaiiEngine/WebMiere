@@ -11,6 +11,7 @@
 
 constexpr int kVp9oMaxVideoWidth  = 8192;
 constexpr int kVp9oMaxVideoHeight = 4320;
+constexpr int kVp9oMaxAudioStreams = 6;
 constexpr int64_t kVp9oMaxVideoPixels =
 	static_cast<int64_t>(kVp9oMaxVideoWidth) * kVp9oMaxVideoHeight;
 

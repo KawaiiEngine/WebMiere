@@ -32,7 +32,7 @@ public:
 	AudioDecoder& operator=(const AudioDecoder&) = delete;
 
 
-	bool Open(const prUTF16Char *path);
+	bool Open(const prUTF16Char *path, int ffmpegAudioStreamIndex);
 	void Close();
 
 	bool IsOpen()     const { return mOpened; }

@@ -63,6 +63,9 @@ typedef struct
 {
 	imFileRef				fileRef;
 	csSDK_int32				importerID;
+	csSDK_int32				premiereStreamIdx;
+	char					hasVideo;
+	char					hasAudio;
 
 
 	csSDK_int32				width;
@@ -76,6 +79,7 @@ typedef struct
 	float					audioSampleRate;
 	csSDK_int32				numChannels;
 	PrAudioSample			numSampleFrames;
+	csSDK_int32				ffmpegAudioStreamIndex;
 
 
 	SPBasicSuite			*BasicSuite;

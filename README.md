@@ -1,16 +1,18 @@
 <p align="center">
-  <img src="docs/images/webmiere-hero.png" alt="WebMiere - YouTube VP9, AV1, and Opus importer for Adobe Premiere Pro" width="100%">
+  <img src="docs/images/webmiere-hero.png" alt="WebMiere - OBS and YouTube-style VP9, AV1, and Opus importer for Adobe Premiere Pro" width="100%">
 </p>
 
 # WebMiere
 
-**Drop supported YouTube-style WebM/MKV media straight into Adobe Premiere Pro.**
+**Drop OBS recordings and YouTube-style WebM/MKV media straight into Adobe Premiere Pro.**
 
-WebMiere is a native Windows x64 importer for the `.webm` and `.mkv` files commonly produced from YouTube video and audio streams.
+WebMiere is a native Windows x64 importer for supported OBS multi-track Matroska recordings and YouTube-style `.webm`/`.mkv` media, provided the files match its documented media requirements.
+
+Import VP9 or AV1 video with up to six independent Opus stereo tracks, exposed separately in Premiere Pro.
 
 **No ProRes transcode. No proxy prep. No WAV extraction.**
 
-Import it, drop it on the timeline, and start editing.
+Import the file, drop it on the timeline, and start editing.
 
 Repository: [KawaiiEngine/WebMiere](https://github.com/KawaiiEngine/WebMiere)
 
@@ -24,38 +26,80 @@ Repository: [KawaiiEngine/WebMiere](https://github.com/KawaiiEngine/WebMiere)
 
 ## What WebMiere Does
 
-- Imports supported YouTube-style VP9/Opus and AV1 SDR/Opus WebM/MKV directly into Premiere Pro
+- Directly imports supported OBS Matroska recordings containing AV1 Main video and up to six independent Opus stereo tracks
+- Exposes each audio stream as a separate stereo track in Premiere Pro
+- Handles YouTube-style VP9/Opus and AV1 SDR/Opus WebM/MKV without video transcoding, proxy preparation, or separate WAV extraction
 - Uses NVIDIA NVDEC, CUDA, and NPP for accelerated video decoding
-- Avoids ProRes transcoding, proxy preparation, and separate WAV extraction
-- Handles stereo 48 kHz Opus audio directly
 - Prioritizes responsive timeline editing over broad format compatibility
 
-Typical workflow:
+Typical workflows:
 
 ```text
+Supported OBS AV1 MKV + up to six Opus tracks -> Premiere Pro -> edit
 YouTube-style VP9 or AV1 WebM/MKV + Opus -> Premiere Pro -> edit
 ```
 
-WebMiere is deliberately specialized. It is not intended to replace a general-purpose Matroska importer.
+WebMiere is deliberately specialized. It is not a universal OBS or Matroska importer.
 
 ## Supported Media
 
 | Feature | Specification |
 | :--- | :--- |
-| **Source** | Ordinary YouTube-style media streams |
+| **Source** | Supported OBS recordings and YouTube-style WebM/MKV media |
 | **Containers** | WebM / Matroska (`.webm`, `.mkv`) |
 | **Video** | VP9 Profile 0 / AV1 Main SDR |
 | **Pixel Format** | 8-bit YUV 4:2:0 |
 | **Color** | SDR, BT.709 matrix, limited range |
 | **Frame Rate** | Constant frame rate |
 | **Maximum Dimensions** | 8192 × 4320 |
-| **Audio** | Opus stereo, 48 kHz (optional) |
+| **Audio Codec** | Opus |
+| **Audio Streams** | None, or 1–6 independent streams |
+| **Audio Format** | Stereo, 48 kHz per stream |
+| **Premiere Output** | Separate stereo audio tracks |
 
-## YouTube and Frame Rate
+Video-only files remain supported.
+
+## OBS Multi-Track Recordings
+
+WebMiere can import supported OBS Matroska recordings containing AV1 Main video and up to six independent Opus stereo audio tracks.
+
+Each audio stream is exposed as a separate stereo track in Premiere Pro, in the same order in which it appears in the Matroska container.
+
+Recommended OBS recording properties:
+
+- Recording format: Matroska (`.mkv`)
+- Video codec: AV1 Main
+- Frame rate: Constant frame rate
+- Color format: 8-bit YUV 4:2:0
+- Color space: Rec. 709
+- Color range: Limited
+- Audio codec: Opus
+- Sample rate: 48 kHz
+- Channels: Stereo
+- Enabled recording tracks: 1–6
+
+Assign sources to recording tracks through OBS Advanced Audio Properties. For example:
+
+- Track 1: complete mix
+- Track 2: microphone
+- Track 3: desktop or game audio
+- Track 4: voice chat
+- Track 5: music
+- Track 6: auxiliary source
+
+This is an example, not a required layout. Track contents are user-defined. WebMiere does not distribute an OBS profile or scene collection; this section provides setup guidance only.
+
+## YouTube-Style Media and Frame Rate
 
 WebMiere is designed for the ordinary CFR VP9 and AV1 SDR delivery streams commonly encountered in YouTube-style media.
 
-In the media tested so far, YouTube delivery streams have been CFR. True VFR remains outside the supported media contract.
+In the media tested so far, YouTube delivery streams have been CFR. True VFR remains outside this plugin's scope.
+
+## Validation
+
+- Six-track routing and long-duration synchronization were verified against direct FFmpeg decoding using an approximately 15-minute recording and a recording longer than three hours.
+- No measurable audio drift was observed in the tested recordings.
+- Existing single-track AV1 SDR/Opus editing and export behavior was also revalidated.
 
 ## Unsupported Media
 
@@ -65,8 +109,13 @@ In the media tested so far, YouTube delivery streams have been CFR. True VFR rem
 - HDR, BT.2020, PQ, or HLG media, including AV1 HDR media
 - Full-range video
 - H.264, HEVC, ProRes, and other non-VP9/non-AV1 video codecs
-- AAC, Vorbis, and other non-Opus audio
-- Mono, surround, multichannel, or non-48 kHz Opus
+- More than six audio streams
+- AAC, Vorbis, and other audio codecs besides Opus
+- Mixed audio sample rates or channel counts, or any sample rate other than 48 kHz
+- Mono, surround, or other multichannel audio
+- Audio streams with different start times
+
+Unsupported files containing multiple audio streams are rejected as a whole rather than partially imported.
 
 ## Installation
 
@@ -165,20 +214,20 @@ Review `THIRD_PARTY_NOTICES.md` and the licenses of the exact runtime DLLs befor
 - Check the Windows temporary directory for the standard Inno Setup installer log if installation failed.
 - Check Premiere's plugin loading log or use Process Monitor to identify a missing DLL if installation succeeded but the importer does not load.
 
-WebMiere directly links against the NVIDIA driver API. FFmpeg, CUDA Runtime, and NPP DLLs are delay-loaded and preloaded from WebMiere's runtime subdirectories when Premiere initializes the importer. If a required runtime DLL is missing, WebMiere safely refuses to initialize.
+WebMiere links directly against the NVIDIA driver API; runtime DLLs are preloaded at importer startup. If a required DLL is missing, WebMiere safely refuses to initialize (see [NVIDIA Loading Model](#nvidia-loading-model) below).
 
 ### A File Does Not Import
 
-A `.webm` or `.mkv` extension does not guarantee compatibility. Check that the file is:
+A `.webm` or `.mkv` extension does not guarantee compatibility. Compare the file against these requirements:
 
-- VP9 Profile 0 or AV1 Main SDR, rather than another video codec
-- Constant frame rate rather than true variable frame rate
-- 8-bit YUV 4:2:0
-- Tagged as BT.709 matrix and limited range
-- SDR rather than HDR
-- For normal AV1 use, the system has an NVIDIA GPU with AV1 hardware decode support
-- Opus stereo at 48 kHz, or has no audio stream
-- Fully downloaded and not truncated
+- **Codec:** VP9 Profile 0 or AV1 Main SDR
+- **Frame rate:** Constant frame rate rather than true VFR
+- **Pixel format:** 8-bit YUV 4:2:0
+- **Color:** SDR, BT.709 matrix, limited range
+- **AV1 hardware:** For normal AV1 use, the system has an NVIDIA GPU with AV1 hardware decode support
+- **Audio:** Video-only, or one to six independent Opus stereo streams at 48 kHz
+- **Audio timing:** All enabled audio streams use the same format and begin at the same source time
+- **File integrity:** Fully downloaded and not truncated
 
 For systems without NVIDIA AV1 hardware decode support, use VP9/Opus media instead of AV1/Opus.
 
@@ -189,11 +238,10 @@ If a YouTube download that should be supported does not import, download it agai
 ## Known Behavior and Design Choices
 
 - WebMiere favors responsive editing over strict recovery. Short audio reads and some recoverable audio decode gaps may be padded with silence.
-- Audio timing is normalized relative to the stream start time. Small startup residues are handled at the beginning of the stream rather than allowed to become progressive audio drift.
+- Audio timing is normalized relative to the shared source start time. Small startup residues are handled at the beginning of each stream rather than allowed to become progressive audio drift.
 - YouTube/DASH muxing may produce small differences between video and audio end times. When a stream-specific duration is unavailable, a container-duration fallback can result in a short final-frame hold. This has not shown a visible problem in normal tested YouTube material.
-- True VFR files may import as nominal CFR. WebMiere does not attempt exact VFR reconstruction and may select, repeat, or skip nearby frames without displaying a warning.
+- True VFR files may be accepted as nominal CFR without exact timestamp reconstruction; frames may be selected, repeated, or skipped without a warning (see [Media Contract](#media-contract)).
 - Premiere may occasionally request BGRA output for thumbnails, isolated frames, effects, or internal display paths. This is expected; normal playback generally uses YUV420P when available.
-- WebMiere does not maintain a long-term importer-side frame cache. Premiere owns timeline caching.
 
 # Technical Notes
 
@@ -209,21 +257,21 @@ High-level flow:
 4. On the NVIDIA path, CUDA/NPP converts decoded surfaces into a Premiere-compatible layout.
 5. WebMiere returns PPix video frames and planar float audio to Premiere.
 
-Unsupported metadata is rejected as early as possible. Because the importer runs inside the Premiere process, the implementation deliberately prefers a narrow and testable media contract over broad codec coverage.
+Unsupported metadata is rejected as early as possible. Because the importer runs inside the Premiere process, an unhandled failure can crash the host—so the implementation deliberately favors a narrow, testable media contract over broad codec coverage.
 
 ## Importer Selection and Fallback
 
 WebMiere registers with elevated importer priority so supported VP9/Opus and AV1 SDR/Opus files are offered to it before more general importers.
 
-Unsupported media must return `imBadFile` from the relevant open or metadata path so Premiere can try another importer. This behavior has been tested with competing Matroska importers using AV1 HDR/10-bit media, AV1/AAC media, and VP9 Profile 2 HDR media.
+Unsupported media must return `imBadFile` from the relevant open or metadata path so Premiere can try another importer. This fallback behavior has been tested using AV1 HDR/10-bit media, AV1/AAC media, and VP9 Profile 2 HDR media.
 
 ## Media Contract
 
-The current target is ordinary YouTube-style CFR VP9/Opus media and AV1 SDR/Opus WebM/MKV media.
+The current target is ordinary YouTube-style and supported OBS-style CFR VP9/Opus or AV1 SDR/Opus WebM/MKV media.
 
-Video timestamps are mapped to a fixed frame index. Exact VFR timestamp reproduction is outside the project scope. A true VFR stream may be accepted using its nominal frame rate, but its frame timing is unsupported.
+Video timestamps are mapped to a fixed frame index. Exact VFR timestamp reproduction is outside the project scope. A true VFR stream may be accepted using its nominal frame rate, but its frame timing is unsupported: WebMiere may select, repeat, or skip nearby frames without emitting a warning.
 
-Audio is decoded as stereo 48 kHz Opus and converted to planar 32-bit float. Stream-relative timestamps are used for sample positioning. A small first-frame residue, bounded by Opus initial padding and container time-base rounding, may be clamped to sample zero.
+Audio is optional. Supported files may contain one to six independent Opus stereo streams at 48 kHz. Within a file, every enabled stream must use that format and share a common source start time. Each stream is converted to planar 32-bit float, and container order is preserved when the streams are exposed as separate stereo tracks in Premiere Pro. Stream-relative timestamps are used for sample positioning. A small first-frame residue, bounded by Opus initial padding and container time-base rounding, may be clamped to sample zero.
 
 ## Video Path
 
@@ -241,9 +289,9 @@ The implementation validates dimensions, pixel format, planes, line sizes, hardw
 
 ## Audio Path
 
-Audio uses the FFmpeg decoder and libswresample to produce planar float samples.
+Each audio stream uses the FFmpeg decoder and libswresample to produce planar float samples.
 
-Separate decoder state is maintained for random-access reads and sequential/conforming reads. Output buffers are zero-initialized, so unread portions remain silent rather than containing uninitialized data.
+Separate decoder state is maintained per stream for random-access reads and sequential/conforming reads. Output buffers are zero-initialized, so unread portions remain silent rather than containing uninitialized data.
 
 ## NVIDIA Loading Model
 
@@ -257,13 +305,12 @@ Consequences:
 - Without the NVIDIA driver, Windows cannot resolve `nvcuda.dll` and rejects the plugin.
 - Missing FFmpeg or CUDA/NPP runtime DLLs prevent WebMiere from initializing, though this check occurs after the plugin entry point is reached.
 - If `cudart64_12.dll` is already loaded in the Premiere process, WebMiere records and reuses that module path. Otherwise it loads the bundled `nvidia\cudart64_12.dll`.
-- macOS cannot load the Windows PE `.prm` binary.
 
-This avoids presenting unsupported hardware as though it might work.
+This avoids making it look like WebMiere works on unsupported hardware.
 
 ## Memory and Resource Policy
 
-WebMiere does not keep a long-lived importer-side frame cache. It decodes requested frames and writes to the output buffer supplied by Premiere.
+WebMiere does not maintain a long-lived internal frame cache. Requested frames are decoded into Premiere-provided output buffers, while Premiere remains responsible for timeline caching.
 
 Resource usage is bounded by the following policies:
 
@@ -310,7 +357,7 @@ swresample-6.dll
 
 The development package contains the matching headers and five MSVC import libraries. Do not substitute development files from another FFmpeg build.
 
-dav1d 1.5.1 is BSD 2-Clause licensed and statically linked into `avcodec-62.dll`; no `dav1d.dll` or `libdav1d.dll` is distributed. Its `dav1d-COPYING.BSD-2-Clause.txt` license text is installed, and the corresponding source and build records are provided by the fixed [WebMiere FFmpeg factory Release](https://github.com/KawaiiEngine/WebMiere-FFmpeg/releases/tag/ffmpeg-webmiere-8.1.2-4).
+dav1d 1.5.1 is BSD 2-Clause licensed and statically linked into `avcodec-62.dll`; no `dav1d.dll` or `libdav1d.dll` is distributed. Its `dav1d-COPYING.BSD-2-Clause.txt` license text is installed; for the corresponding source and build records, see *Release Integrity and Source Availability* above.
 
 Default dependency roots:
 

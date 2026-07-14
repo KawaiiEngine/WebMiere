@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
   <title>WebMiere — OBS and yt-dlp to Premiere Pro</title>
   <meta name="description" content="Import OBS multi-track MKV and YouTube WebM/MKV directly into Adobe Premiere Pro.">
   <meta name="theme-color" content="#7c3aed">
@@ -26,7 +27,7 @@
       <p class="eyebrow">Premiere Pro importer</p>
       <h1>From OBS and yt-dlp to Premiere Pro.</h1>
       <p class="lead">Drop WebM/MKV directly into your timeline.</p>
-      <p class="sub">VP9 / AV1 video, Opus audio, and up to six separate OBS audio tracks.</p>
+      <p class="sub">VP9 / AV1 video, Opus audio, and up to six separate audio tracks.</p>
 
       <div class="actions">
         <a class="button primary" href="https://github.com/KawaiiEngine/WebMiere/releases/latest">Download for Windows</a>
@@ -34,12 +35,50 @@
       </div>
     </section>
 
-    <section class="visual">
-      <img
-        src="images/webmiere-hero.png"
-        alt="WebMiere plugin UI in Adobe Premiere Pro showing native import of OBS Studio multi-track MKV and YouTube WebM video with NVIDIA-only GPU support."
-      >
+    <section class="visual video" id="video-container">
+      <iframe
+        id="youtube-demo"
+        title="WebMiere — Import OBS AV1 and Opus MKV into Premiere Pro"
+        loading="eager"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        allowfullscreen>
+      </iframe>
+
+      <a class="local-preview" id="local-preview"
+         href="https://www.youtube.com/watch?v=lo9j_QIbcrg"
+         target="_blank" rel="noopener noreferrer">
+        <img
+          src="https://i.ytimg.com/vi/lo9j_QIbcrg/maxresdefault.jpg"
+          alt="Watch the WebMiere demo on YouTube">
+        <span>Local file preview — watch on YouTube</span>
+      </a>
     </section>
   </main>
+
+  <script>
+    (() => {
+      const frame = document.getElementById("youtube-demo");
+      const fallback = document.getElementById("local-preview");
+
+      if (window.location.protocol === "file:") {
+        frame.hidden = true;
+        fallback.hidden = false;
+        return;
+      }
+
+      const origin = window.location.origin;
+      const pageUrl = window.location.href;
+      const params = new URLSearchParams({
+        rel: "0",
+        playsinline: "1",
+        origin,
+        widget_referrer: pageUrl
+      });
+
+      frame.src = `https://www.youtube.com/embed/lo9j_QIbcrg?${params.toString()}`;
+      frame.hidden = false;
+      fallback.hidden = true;
+    })();
+  </script>
 </body>
 </html>

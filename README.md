@@ -14,7 +14,7 @@ Import VP9 or AV1 video with up to six independent Opus stereo tracks, exposed s
 
 Import the file, drop it on the timeline, and start editing.
 
-Repository: [KawaiiEngine/WebMiere](https://github.com/KawaiiEngine/WebMiere)
+Demo: [Watch on YouTube](https://www.youtube.com/watch?v=lo9j_QIbcrg)
 
 ## System Requirements
 |  | VP9 | AV1 |

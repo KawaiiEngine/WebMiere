@@ -46,6 +46,8 @@ public:
 
 private:
 	bool	SeekToSample(int64_t targetSample);
+	bool	TrySeekViaVideoCue(int64_t targetSample);
+	bool	SeekViaAudioIndex(int64_t targetSample);
 	bool	DecodeAppendOneFrame();
 	bool	EnsureSwr(const AVFrame *f);
 	int64_t	SampleIndexOf(const AVFrame *f) const;
@@ -63,6 +65,7 @@ private:
 
 
 	int	mAudioStream;
+	int	mVideoStream;
 	int	mSampleRate;
 	int	mOutChannels;
 	int	mTimeBaseNum;

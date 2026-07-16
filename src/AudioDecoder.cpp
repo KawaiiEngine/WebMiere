@@ -59,6 +59,7 @@ AudioDecoder::AudioDecoder()
 	, mHasPendingPacket(false)
 	, mSwr(nullptr)
 	, mAudioStream(-1)
+	, mVideoStream(-1)
 	, mSampleRate(48000)
 	, mOutChannels(2)
 	, mTimeBaseNum(1)
@@ -116,6 +117,7 @@ void AudioDecoder::Close()
 	mLeftover.clear();
 	mScratch.clear();
 	mAudioStream	= -1;
+	mVideoStream	= -1;
 	mFront			= 0;
 	mHeadSample		= -1;
 	mInitialPaddingSamples = 0;
@@ -160,6 +162,7 @@ bool AudioDecoder::Open(const prUTF16Char *path, int ffmpegAudioStreamIndex)
 	}
 
 	mAudioStream = ffmpegAudioStreamIndex;
+	mVideoStream = av_find_best_stream(mFmt, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
 	AVStream *st = mFmt->streams[mAudioStream];
 	if (st == nullptr || st->codecpar == nullptr ||
 		st->codecpar->codec_type != AVMEDIA_TYPE_AUDIO)
@@ -531,6 +534,116 @@ bool AudioDecoder::DecodeAppendOneFrame()
 
 
 bool AudioDecoder::SeekToSample(int64_t targetSample)
+{
+	if (targetSample < 0)
+	{
+		targetSample = 0;
+	}
+
+	if (targetSample > mSeekPrerollSamples && mVideoStream >= 0)
+	{
+		if (TrySeekViaVideoCue(targetSample))
+		{
+			return true;
+		}
+
+		mLastReadError = 0;
+	}
+
+	return SeekViaAudioIndex(targetSample);
+}
+
+
+bool AudioDecoder::TrySeekViaVideoCue(int64_t targetSample)
+{
+	if (mFmt == nullptr || mVideoStream < 0 ||
+		static_cast<unsigned int>(mVideoStream) >= mFmt->nb_streams ||
+		targetSample <= mSeekPrerollSamples)
+	{
+		return false;
+	}
+
+	AVStream *videoStream = mFmt->streams[mVideoStream];
+	if (videoStream == nullptr ||
+		videoStream->time_base.num <= 0 || videoStream->time_base.den <= 0)
+	{
+		return false;
+	}
+
+	const AVRational sampleBase = { 1, mSampleRate };
+	const int64_t seekSample = targetSample - mSeekPrerollSamples;
+	const int64_t videoStartTime =
+		(videoStream->start_time == AV_NOPTS_VALUE) ? 0 : videoStream->start_time;
+	const int64_t videoTs =
+		av_rescale_q(seekSample, sampleBase, videoStream->time_base) + videoStartTime;
+
+	const int seekResult =
+		av_seek_frame(mFmt, mVideoStream, videoTs, AVSEEK_FLAG_BACKWARD);
+	if (seekResult < 0)
+	{
+		mLastReadError = seekResult;
+		return false;
+	}
+
+	avcodec_flush_buffers(mCodecCtx);
+	if (mHasPendingPacket)
+	{
+		av_packet_unref(mPendingPacket);
+		mHasPendingPacket = false;
+	}
+	for (size_t ch = 0; ch < mLeftover.size(); ch++)
+	{
+		mLeftover[ch].clear();
+	}
+	mFront			= 0;
+	mHeadSample		= -1;
+	mResync			= true;
+	mEof			= false;
+	mLastReadError	= 0;
+	mFlushSent		= false;
+
+	while (LeftoverCount() == 0 && !mEof)
+	{
+		if (!DecodeAppendOneFrame())
+		{
+			break;
+		}
+	}
+	if (mHeadSample < 0 || mHeadSample > targetSample)
+	{
+		return false;
+	}
+
+	int64_t toDrop = targetSample - mHeadSample;
+	while (toDrop > 0)
+	{
+		if (LeftoverCount() == 0)
+		{
+			if (!DecodeAppendOneFrame())
+			{
+				break;
+			}
+			if (LeftoverCount() == 0)
+			{
+				continue;
+			}
+		}
+		const int64_t avail = LeftoverCount();
+		const int64_t d = (avail < toDrop) ? avail : toDrop;
+		if (d <= 0)
+		{
+			break;
+		}
+		mFront      += static_cast<size_t>(d);
+		mHeadSample += d;
+		toDrop      -= d;
+	}
+
+	return toDrop == 0;
+}
+
+
+bool AudioDecoder::SeekViaAudioIndex(int64_t targetSample)
 {
 	if (targetSample < 0)
 	{

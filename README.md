@@ -67,16 +67,20 @@ Each audio stream is exposed as a separate stereo track in Premiere Pro, in the 
 
 Recommended OBS recording properties:
 
-- Recording format: Matroska (`.mkv`)
-- Video codec: AV1 Main
+> **Note:** NVIDIA NVENC AV1 recording in OBS requires a GeForce RTX 40 Series GPU or newer.
+
+- Output mode: Advanced
+- Recording format: Matroska Video (`.mkv`)
+- Video encoder: NVIDIA NVENC AV1
+- Profile: Main
 - Frame rate: Constant frame rate
-- Color format: 8-bit YUV 4:2:0
+- Color format: NV12 (8-bit, 4:2:0)
 - Color space: Rec. 709
 - Color range: Limited
-- Audio codec: Opus
+- Audio encoder: FFmpeg Opus
 - Sample rate: 48 kHz
 - Channels: Stereo
-- Enabled recording tracks: 1–6
+- Enabled audio tracks: 1–6
 
 Assign sources to recording tracks through OBS Advanced Audio Properties. For example:
 
@@ -295,18 +299,9 @@ Separate decoder state is maintained per stream for random-access reads and sequ
 
 ## NVIDIA Loading Model
 
-WebMiere directly links against the NVIDIA driver API (`nvcuda.dll`). FFmpeg, CUDA Runtime, and NPP DLLs are delay-loaded. At importer startup, WebMiere resolves its own plugin directory, registers the `ffmpeg` and `nvidia` runtime subdirectories, and preloads the required DLLs from absolute paths before any FFmpeg, CUDA, or NPP API is called.
+WebMiere directly links against the NVIDIA Driver API (`nvcuda.dll`). It uses `cudart64_12.dll` already loaded by Premiere Pro and preloads its bundled FFmpeg and NPP DLLs from the plugin directory.
 
-The exact CUDA/NPP DLL set is release-specific and must match the ABI used to build `WebMiere.prm`.
-
-Consequences:
-
-- On a supported NVIDIA system with the required DLLs, Premiere can load the plugin.
-- Without the NVIDIA driver, Windows cannot resolve `nvcuda.dll` and rejects the plugin.
-- Missing FFmpeg or CUDA/NPP runtime DLLs prevent WebMiere from initializing, though this check occurs after the plugin entry point is reached.
-- If `cudart64_12.dll` is already loaded in the Premiere process, WebMiere records and reuses that module path. Otherwise it loads the bundled `nvidia\cudart64_12.dll`.
-
-This avoids making it look like WebMiere works on unsupported hardware.
+Missing the NVIDIA driver or required runtime DLLs prevents WebMiere from initializing. Bundled runtime DLLs must match the WebMiere build.
 
 ## Memory and Resource Policy
 

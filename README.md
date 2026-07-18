@@ -407,17 +407,17 @@ Copyright (c) 2026 KawaiiEngine (Sashimiso).
 
 WebMiere source code is licensed under the Mozilla Public License 2.0. See `LICENSE`.
 
+WebMiere is provided under the MPL-2.0 on an "as is" basis, without warranty. See `LICENSE`, including Sections 6 and 7, for the full disclaimer of warranty and limitation of liability.
+
 Binary releases identify the corresponding source tag or source archive so recipients can obtain the MPL-covered source code.
 
 Third-party components remain under their respective licenses and are summarized in `THIRD_PARTY_NOTICES.md`.
 
 ## Artwork and Characters
 
-The WebMiere source code is licensed under MPL-2.0.
+The MPL-2.0 license applies to the WebMiere source code only.
 
-Mina, Miere, the WebMiere logo, icons, installer artwork, and
-promotional images are separate brand and character assets and
-are not licensed under the MPL-2.0.
+Mina, Miere, the WebMiere logo, icons, installer artwork, and promotional images are separate brand and character assets and are not licensed under the MPL-2.0.
 
 Non-commercial fan art is welcome.
 

@@ -1,0 +1,141 @@
+name: Bug report
+description: Report a reproducible bug in a supported file and environment
+title: "[Bug] "
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        WebMiere is free and open-source software licensed under the Mozilla Public License 2.0 (MPL-2.0), without individual support.
+
+        GitHub Issues are only for reproducible bugs involving supported files and environments.
+
+        The following are not accepted:
+
+        - Usage questions
+        - Installation or environment setup help
+        - Feature requests
+        - Requests to support additional formats, platforms, GPUs, or Premiere Pro versions
+        - General troubleshooting without reproducible information
+
+        Incomplete or unsupported reports may be closed without a reply.
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Confirmation
+      options:
+        - label: I have read the README and confirmed that my file and environment are supported.
+          required: true
+        - label: I reproduced the problem using the latest release of WebMiere.
+          required: true
+        - label: I searched the existing issues for the same problem.
+          required: true
+        - label: This is a reproducible bug report, not a question or feature request.
+          required: true
+        - label: I understand that there is no guarantee that this issue will be investigated, receive a reply, or be fixed.
+          required: true
+
+  - type: input
+    id: webmiere-version
+    attributes:
+      label: WebMiere version
+      description: Enter the exact version number. Do not write only "latest."
+      placeholder: "v1.2.1"
+    validations:
+      required: true
+
+  - type: input
+    id: premiere-version
+    attributes:
+      label: Adobe Premiere Pro version
+      description: Enter the complete version number shown in About Premiere Pro.
+      placeholder: "26.x.x"
+    validations:
+      required: true
+
+  - type: input
+    id: gpu
+    attributes:
+      label: NVIDIA GPU
+      description: Enter the complete GPU model name.
+      placeholder: "GeForce RTX 5090"
+    validations:
+      required: true
+
+  - type: input
+    id: driver-version
+    attributes:
+      label: NVIDIA driver version
+      description: Enter the installed NVIDIA graphics driver version.
+      placeholder: "610.62"
+    validations:
+      required: true
+
+  - type: textarea
+    id: media-info
+    attributes:
+      label: MPC-BE MediaInfo
+      description: |
+        1. Open the affected file in MPC-BE.
+        2. Open File → Properties → MediaInfo.
+        3. Copy and paste everything from "Format / 形式" onward.
+
+        Do not remove or edit any fields.
+        Screenshots are not accepted.
+      placeholder: |
+        Format : Matroska
+        Format version : Version 4
+        File size : ...
+        Duration : ...
+
+        Video
+        Format : VP9
+        Format profile : 0
+        ...
+
+        Audio
+        Format : Opus
+        ...
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction-steps
+    attributes:
+      label: Steps to reproduce
+      description: Provide the exact sequence of operations required to reproduce the problem.
+      placeholder: |
+        1. Start Premiere Pro.
+        2. Create a new project.
+        3. Import the affected MKV file.
+        4. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual-behavior
+    attributes:
+      label: Actual behavior
+      description: Describe exactly what happened, including any error message, delay, incorrect audio, or incorrect video.
+      placeholder: Describe the observed behavior.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: reproducibility
+    attributes:
+      label: Reproducibility
+      description: How consistently does the problem occur with the same file and steps?
+      options:
+        - Every time
+        - Sometimes
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional-information
+    attributes:
+      label: Additional information
+      description: Add any other information directly relevant to reproducing the bug.

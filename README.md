@@ -14,7 +14,7 @@ Import VP9 or AV1 video with up to six independent Opus stereo tracks, exposed s
 
 Import the file, drop it on the timeline, and start editing.
 
-Demo: [Watch on YouTube](https://www.youtube.com/watch?v=lo9j_QIbcrg)
+Demo: [Watch on YouTube](https://youtu.be/W2LpLzsljrw)
 
 ## System Requirements
 |  | VP9 | AV1 |

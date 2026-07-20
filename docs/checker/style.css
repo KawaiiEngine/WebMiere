@@ -1,0 +1,432 @@
+/* WebMiere Checker — extends the design tokens from the top-level style.css.
+   Load ../style.css BEFORE this file; this file only adds checker-specific
+   components and reuses --bg, --text, --muted, --line, --purple, --pink,
+   --cyan from :root. */
+
+.checker-header {
+  width: min(calc(100% - 2rem), 1180px);
+  margin: 0 auto;
+  padding: 1.5rem 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.checker-header .brand {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0;
+  font-size: 1.5rem;
+  font-weight: 900;
+  letter-spacing: -0.045em;
+  text-decoration: none;
+}
+
+.checker-header .brand-web {
+  background: none;
+  -webkit-background-clip: border-box;
+  background-clip: border-box;
+  color: #f7f5ff;
+}
+
+.checker-header .brand-miere {
+  background: linear-gradient(90deg, #9b5cff 0%, #ec5eb7 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.checker-header .brand-sep {
+  margin: 0 .55rem;
+  background: none;
+  -webkit-background-clip: border-box;
+  background-clip: border-box;
+  color: #69657e;
+  font-weight: 500;
+}
+
+.checker-header .brand-checker {
+  background: none;
+  -webkit-background-clip: border-box;
+  background-clip: border-box;
+  color: #c7bfdc;
+  font-weight: 800;
+}
+
+.checker-header .gh-link {
+  font-size: .85rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-decoration: none;
+  border: 1px solid var(--line);
+  padding: .5rem .9rem;
+  border-radius: .7rem;
+}
+.checker-header .gh-link:hover { color: var(--text); border-color: var(--purple); }
+
+.checker-shell {
+  width: min(calc(100% - 2rem), 1120px);
+  margin: 0 auto;
+  padding: 3rem 0 4rem;
+}
+
+.checker-workspace {
+  min-width: 0;
+}
+
+.checker-shell.has-result .checker-workspace {
+  display: none;
+}
+
+.checker-panel {
+  min-width: 0;
+}
+
+.checker-hero {
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+
+.checker-hero h1 {
+  margin: 0 0 .8rem;
+  font-size: clamp(2rem, 3.2vw, 3rem);
+  line-height: 1.12;
+  letter-spacing: -.03em;
+  text-wrap: balance;
+}
+
+.checker-hero .sub {
+  margin: 0 auto;
+  max-width: 480px;
+  color: var(--muted);
+  font-size: 1.05rem;
+  line-height: 1.6;
+  opacity: .85;
+  text-wrap: pretty;
+}
+.checker-hero .sub b { color: var(--text); font-weight: 700; opacity: 1; }
+
+.privacy-note {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  margin-top: 1.25rem;
+  font-size: .8rem;
+  font-weight: 700;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  padding: .4rem .8rem;
+  border-radius: 100px;
+}
+.privacy-note svg { width: .85rem; height: .85rem; flex-shrink: 0; color: var(--cyan); }
+
+/* ---------- dropzone ---------- */
+.dropzone {
+  margin: 2.5rem 0;
+  border: 1.5px dashed var(--line);
+  border-radius: 1.1rem;
+  padding: 3.4rem 2rem;
+  text-align: center;
+  background: rgba(18,19,35,.6);
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.dropzone:hover, .dropzone.drag-over {
+  border-color: var(--purple);
+  background: rgba(139,92,246,.08);
+}
+.dz-icon {
+  width: 2.4rem; height: 2.4rem;
+  margin: 0 auto 1.1rem;
+  color: var(--muted);
+  opacity: .7;
+}
+.dropzone:hover .dz-icon, .dropzone.drag-over .dz-icon { color: var(--purple); opacity: 1; }
+.dz-title { font-size: 1.05rem; font-weight: 800; margin-bottom: .35rem; }
+.dz-sub { font-size: .85rem; color: var(--muted); opacity: .8; }
+.dz-sub code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  background: rgba(255,255,255,.06);
+  border: 1px solid var(--line);
+  padding: .1rem .4rem;
+  border-radius: .35rem;
+  color: var(--cyan);
+}
+#file-input { display: none; }
+
+/* ---------- loading ---------- */
+.loading-view { display: none; text-align: center; padding: 2.5rem 0; }
+.loading-view.active { display: block; }
+.spinner {
+  width: 2.2rem; height: 2.2rem;
+  margin: 0 auto 1.25rem;
+  border: 3px solid var(--line);
+  border-top-color: var(--purple);
+  border-radius: 50%;
+  animation: wm-spin 0.9s linear infinite;
+}
+@keyframes wm-spin { to { transform: rotate(360deg); } }
+.loading-label { font-size: .85rem; font-weight: 700; color: var(--muted); }
+.loading-file { font-size: .8rem; color: var(--muted); opacity: .7; margin-top: .4rem; }
+
+/* ---------- result ---------- */
+.result {
+  display: none;
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto;
+}
+.result.active { display: block; }
+
+.verdict {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.3rem 1.4rem;
+  border-radius: .95rem;
+  margin-bottom: 1.4rem;
+  border: 1px solid var(--line);
+}
+.verdict.pass { background: rgba(34,211,238,.07); border-color: rgba(34,211,238,.28); }
+.verdict.fail { background: rgba(236,72,153,.07); border-color: rgba(236,72,153,.28); }
+.verdict-icon {
+  width: 2.4rem; height: 2.4rem;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.verdict.pass .verdict-icon { background: rgba(34,211,238,.15); color: var(--cyan); }
+.verdict.fail .verdict-icon { background: rgba(236,72,153,.15); color: var(--pink); }
+.verdict-icon svg { width: 1.3rem; height: 1.3rem; }
+.verdict-text h2 { margin: 0 0 .2rem; font-size: 1.1rem; font-weight: 800; }
+.verdict.pass .verdict-text h2 { color: var(--cyan); }
+.verdict.fail .verdict-text h2 { color: var(--pink); }
+.verdict-text p { margin: 0; font-size: .85rem; color: var(--muted); line-height: 1.5; }
+
+.filename-chip {
+  display: inline-block;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: .8rem;
+  color: var(--muted);
+  background: rgba(255,255,255,.05);
+  border: 1px solid var(--line);
+  padding: .4rem .8rem;
+  border-radius: 100px;
+  margin-bottom: 1.25rem;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.check-table {
+  border: 1px solid var(--line);
+  border-radius: .95rem;
+  overflow: hidden;
+  background: rgba(18,19,35,.6);
+  margin-bottom: 1.5rem;
+}
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: .9rem;
+  padding: .9rem 1.1rem;
+  border-bottom: 1px solid var(--line);
+  font-size: .88rem;
+}
+.check-row:last-child { border-bottom: none; }
+.check-mark {
+  width: 1.3rem; height: 1.3rem;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.check-mark svg { width: .75rem; height: .75rem; }
+.check-mark.ok { background: rgba(34,211,238,.15); color: var(--cyan); }
+.check-mark.bad { background: rgba(236,72,153,.15); color: var(--pink); }
+.check-mark.warn { background: rgba(250,204,21,.15); color: #facc15; }
+.check-label { flex: 0 0 8rem; color: var(--muted); font-size: .82rem; }
+.check-value { flex: 1; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .82rem; color: var(--text); }
+.check-value .expected {
+  display: block;
+  font-family: Inter, sans-serif;
+  color: var(--muted);
+  opacity: .65;
+  font-size: .72rem;
+  margin-top: .15rem;
+}
+
+.actions { display: flex; gap: .75rem; flex-wrap: wrap; }
+/* .button / .primary / .secondary reused from top-level style.css */
+
+.raw-toggle { margin-top: 1.25rem; }
+.raw-toggle summary {
+  cursor: pointer;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: .78rem;
+  color: var(--muted);
+  opacity: .7;
+  list-style: none;
+}
+.raw-toggle summary::-webkit-details-marker { display: none; }
+.raw-toggle summary:hover { opacity: 1; }
+.raw-toggle pre {
+  margin-top: .75rem;
+  background: rgba(0,0,0,.3);
+  border: 1px solid var(--line);
+  border-radius: .7rem;
+  padding: 1rem 1.1rem;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: .75rem;
+  color: var(--muted);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.error-view { display: none; text-align: center; padding: 2rem 0; }
+.error-view.active { display: block; }
+.error-view .verdict-icon { margin: 0 auto 1rem; }
+.error-view h2 { font-size: 1rem; margin: 0 0 .4rem; color: var(--pink); }
+.error-view p { font-size: .85rem; color: var(--muted); max-width: 380px; margin: 0 auto; line-height: 1.55; }
+
+.reset-link {
+  display: block;
+  text-align: center;
+  margin-top: 1.75rem;
+  font-size: .8rem;
+  font-weight: 700;
+  color: var(--muted);
+  opacity: .75;
+  cursor: pointer;
+}
+.reset-link:hover { color: var(--purple); opacity: 1; }
+
+/* ---------- scope footer ---------- */
+.scope {
+  margin: 4rem 0 2.5rem;
+  padding-top: 2.5rem;
+  border-top: 1px solid var(--line);
+}
+.scope-label {
+  font-size: .72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--muted);
+  opacity: .7;
+  margin-bottom: 1rem;
+}
+.scope-chips { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: .75rem; }
+.chip {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: .78rem;
+  padding: .4rem .7rem;
+  border-radius: .5rem;
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+.scope-note { font-size: .82rem; color: var(--muted); opacity: .75; line-height: 1.6; }
+
+.checker-footer {
+  border-top: 1px solid var(--line);
+  padding: 1.75rem 0 2.75rem;
+  width: min(calc(100% - 2rem), 1120px);
+  margin: 0 auto;
+  font-size: .78rem;
+  color: var(--muted);
+  opacity: .65;
+  text-align: center;
+}
+
+@media (min-width: 900px) {
+  .checker-workspace {
+    display: grid;
+    grid-template-columns: minmax(0, .9fr) minmax(420px, 1.1fr);
+    align-items: center;
+    gap: clamp(2.5rem, 6vw, 5.5rem);
+  }
+
+  .checker-hero {
+    text-align: left;
+    margin-bottom: 0;
+  }
+
+  .checker-hero .sub {
+    margin-left: 0;
+    margin-right: 0;
+  }
+
+  .privacy-note {
+    border-radius: .75rem;
+  }
+
+  .checker-panel {
+    min-height: 21rem;
+    display: grid;
+    align-items: stretch;
+  }
+
+  .checker-panel > * {
+    grid-area: 1 / 1;
+  }
+
+  .dropzone {
+    min-height: 21rem;
+    margin: 0;
+    padding: 4.5rem 2.5rem;
+  }
+
+  .loading-view.active,
+  .error-view.active {
+    align-self: center;
+  }
+
+  .check-row {
+    display: grid;
+    grid-template-columns: 1.3rem minmax(10rem, .42fr) minmax(0, 1.58fr);
+    gap: 1rem;
+    padding: .95rem 1.25rem;
+  }
+
+  .check-label {
+    flex-basis: auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .checker-shell { padding-top: 2.25rem; }
+  .checker-hero h1 { font-size: clamp(1.7rem, 6vw, 2.2rem); }
+  .dropzone { padding: 2.5rem 1.2rem; }
+  .check-label { flex: 0 0 6rem; font-size: .76rem; }
+}
+
+
+.actions button.button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+
+body,
+button,
+input,
+select,
+textarea {
+  font-family: "Zen Maru Gothic", system-ui, sans-serif;
+}
+
+
+.brand,
+.checker-header .brand,
+.checker-header .brand-web,
+.checker-header .brand-miere,
+.checker-header .brand-sep,
+.checker-header .brand-checker {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+:root {
+  font-size: 20px;
+}

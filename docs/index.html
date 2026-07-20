@@ -8,6 +8,9 @@
   <meta name="description" content="Import OBS multi-track MKV and YouTube WebM/MKV directly into Adobe Premiere Pro.">
   <meta name="theme-color" content="#7c3aed">
   <link rel="canonical" href="https://kawaiiengine.github.io/WebMiere/">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;500;700;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 
   <meta property="og:type" content="website">
@@ -31,6 +34,7 @@
 
       <div class="actions">
         <a class="button primary" href="https://github.com/KawaiiEngine/WebMiere/releases/latest">Download for Windows</a>
+        <a class="button secondary" href="checker/">Check a File</a>
         <a class="button secondary" href="https://github.com/KawaiiEngine/WebMiere">GitHub / Docs</a>
       </div>
     </section>
@@ -45,10 +49,10 @@
       </iframe>
 
       <a class="local-preview" id="local-preview"
-         href="https://www.youtube.com/watch?v=lo9j_QIbcrg"
+         href="https://youtu.be/W2LpLzsljrw"
          target="_blank" rel="noopener noreferrer">
         <img
-          src="https://i.ytimg.com/vi/lo9j_QIbcrg/maxresdefault.jpg"
+          src="https://i.ytimg.com/vi/W2LpLzsljrw/maxresdefault.jpg"
           alt="Watch the WebMiere demo on YouTube">
         <span>Local file preview — watch on YouTube</span>
       </a>
@@ -75,7 +79,7 @@
         widget_referrer: pageUrl
       });
 
-      frame.src = `https://www.youtube.com/embed/lo9j_QIbcrg?${params.toString()}`;
+      frame.src = `https://www.youtube.com/embed/W2LpLzsljrw?${params.toString()}`;
       frame.hidden = false;
       fallback.hidden = true;
     })();

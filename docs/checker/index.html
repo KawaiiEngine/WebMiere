@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <title>WebMiere Checker — Will this file work?</title>
+  <meta name="description" content="Drop a WebM or MKV file and find out if WebMiere can import it. Runs entirely in your browser — nothing is uploaded.">
+  <meta name="theme-color" content="#7c3aed">
+  <link rel="canonical" href="https://kawaiiengine.github.io/WebMiere/checker/">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;500;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../style.css">
+  <link rel="stylesheet" href="style.css">
+
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="WebMiere Checker — Will this file work?">
+  <meta property="og:description" content="Drop a WebM or MKV file and find out if WebMiere can import it, right in your browser.">
+  <meta property="og:url" content="https://kawaiiengine.github.io/WebMiere/checker/">
+  <meta name="twitter:card" content="summary">
+</head>
+<body>
+  <header class="checker-header">
+    <a class="brand" href="../">
+      <span class="brand-web">Web</span><span class="brand-miere">Miere</span>
+      <span class="brand-sep">/</span>
+      <span class="brand-checker">Checker</span>
+    </a>
+    <a class="gh-link" href="https://github.com/KawaiiEngine/WebMiere" target="_blank" rel="noopener">GitHub</a>
+  </header>
+
+  <main class="checker-shell">
+    <section class="checker-workspace">
+      <div class="checker-hero">
+        <h1>Will this file<br>work in Premiere?</h1>
+        <p class="sub">
+          Check whether a <b>WebM</b> or <b>MKV</b> matches WebMiere's supported formats.
+        </p>
+        <div class="privacy-note">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/></svg>
+          Nothing is uploaded — the check runs entirely on your machine
+        </div>
+      </div>
+
+      <div class="checker-panel">
+        <div class="dropzone" id="dropzone">
+          <svg class="dz-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3v13m0 0l-4-4m4 4l4-4M4 21h16"/></svg>
+          <div class="dz-title">Drop a file, or click to browse</div>
+          <div class="dz-sub">Accepts <code>.webm</code> and <code>.mkv</code></div>
+          <input type="file" id="file-input" accept=".webm,.mkv,video/webm,video/x-matroska">
+        </div>
+
+        <div class="loading-view" id="loading-view">
+          <div class="spinner"></div>
+          <div class="loading-label" id="loading-label">Loading the checker…</div>
+          <div class="loading-file" id="loading-file"></div>
+        </div>
+
+        <div class="error-view" id="error-view">
+          <div class="verdict-icon" style="background:rgba(236,72,153,.15);color:var(--pink);width:2.4rem;height:2.4rem;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+          </div>
+          <h2>Couldn't read this file</h2>
+          <p id="error-message">The checker engine couldn't parse this file. It may be corrupted, or not actually a WebM/MKV container.</p>
+          <span class="reset-link" onclick="wmReset()">← Try another file</span>
+        </div>
+      </div>
+    </section>
+
+    <div class="result" id="result">
+      <div class="filename-chip" id="filename-chip"></div>
+
+      <div class="verdict" id="verdict">
+        <div class="verdict-icon" id="verdict-icon"></div>
+        <div class="verdict-text">
+          <h2 id="verdict-title"></h2>
+          <p id="verdict-desc"></p>
+        </div>
+      </div>
+
+      <div class="check-table" id="check-table"></div>
+
+      <div class="actions" id="actions"></div>
+
+    </div>
+
+    <div class="scope">
+      <div class="scope-label">What WebMiere supports</div>
+      <div class="scope-chips">
+        <span class="chip">VP9</span>
+        <span class="chip">AV1</span>
+        <span class="chip">8-bit 4:2:0</span>
+        <span class="chip">SDR · BT.709</span>
+        <span class="chip">Opus, up to 6 tracks</span>
+        <span class="chip">CFR</span>
+      </div>
+      <p class="scope-note">
+        This checker reads container and stream metadata only. It does not test GPU decoding,
+        actual Premiere Pro import, file integrity, or playback stability. A pass means the
+        file matches WebMiere's supported formats.
+      </p>
+    </div>
+  </main>
+
+<script>
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('file-input');
+const checkerShell = document.querySelector('.checker-shell');
+const loadingView = document.getElementById('loading-view');
+const loadingLabel = document.getElementById('loading-label');
+const loadingFile = document.getElementById('loading-file');
+const errorView = document.getElementById('error-view');
+const errorMessage = document.getElementById('error-message');
+const resultView = document.getElementById('result');
+
+let mediaInfoPromise = null;
+let mediaInfoScriptPromise = null;
+
+function loadMediaInfoScript() {
+  if (window.MediaInfo?.mediaInfoFactory) return Promise.resolve();
+  if (mediaInfoScriptPromise) return mediaInfoScriptPromise;
+
+  mediaInfoScriptPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://unpkg.com/mediainfo.js@0.3.7';
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('MediaInfo.js could not be downloaded.'));
+    document.head.appendChild(script);
+  }).catch((error) => {
+    mediaInfoScriptPromise = null;
+    throw error;
+  });
+
+  return mediaInfoScriptPromise;
+}
+
+function showView(view) {
+  checkerShell.classList.toggle('has-result', view === 'result');
+  dropzone.style.display = view === 'dropzone' ? 'block' : 'none';
+  loadingView.classList.toggle('active', view === 'loading');
+  errorView.classList.toggle('active', view === 'error');
+  resultView.classList.toggle('active', view === 'result');
+}
+
+window.wmReset = function () {
+  fileInput.value = '';
+  showView('dropzone');
+};
+
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  dropzone.classList.add('drag-over');
+});
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+dropzone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropzone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f) handleFile(f);
+});
+fileInput.addEventListener('change', (e) => {
+  const f = e.target.files[0];
+  if (f) handleFile(f);
+});
+
+async function ensureMediaInfo() {
+  if (!mediaInfoPromise) {
+    mediaInfoPromise = (async () => {
+      loadingLabel.textContent = 'Loading the checker engine (first time only)…';
+      await loadMediaInfoScript();
+      if (!window.MediaInfo || typeof window.MediaInfo.mediaInfoFactory !== 'function') {
+        throw new Error('MediaInfo.js loaded without its factory API.');
+      }
+      return window.MediaInfo.mediaInfoFactory({ format: 'object', full: true });
+    })().catch((error) => {
+      mediaInfoPromise = null;
+      throw error;
+    });
+  }
+  return mediaInfoPromise;
+}
+
+async function handleFile(file) {
+  if (!/\.(webm|mkv)$/i.test(file.name)) {
+    errorMessage.textContent = 'Select a .webm or .mkv file.';
+    showView('error');
+    return;
+  }
+
+  showView('loading');
+  loadingFile.textContent = `${file.name} · ${formatBytes(file.size)}`;
+
+  try {
+    const mediaInfo = await ensureMediaInfo();
+    loadingLabel.textContent = 'Reading container and stream metadata…';
+
+    const result = await mediaInfo.analyzeData(
+      file.size,
+      async (chunkSize, offset) => {
+        const buffer = await file.slice(offset, offset + chunkSize).arrayBuffer();
+        return new Uint8Array(buffer);
+      }
+    );
+
+    const tracks = result?.media?.track;
+    if (!Array.isArray(tracks) || tracks.length === 0) {
+      throw new Error('No media tracks were found.');
+    }
+
+    renderResult(file.name, analyzeMediaInfo(result), result);
+    showView('result');
+  } catch (error) {
+    console.error(error);
+    const message = error instanceof Error ? error.message : String(error);
+    errorMessage.textContent = `The checker could not read this file. ${message}`;
+    showView('error');
+  }
+}
+
+function analyzeMediaInfo(result) {
+  const checks = [];
+  const tracks = result.media.track;
+  const general = tracks.find((track) => track['@type'] === 'General') || {};
+  const videos = tracks.filter((track) => track['@type'] === 'Video');
+  const audios = tracks.filter((track) => track['@type'] === 'Audio');
+
+  const container = String(general.Format || '').toLowerCase();
+  addCheck(checks, 'Container', container === 'webm' || container === 'matroska',
+    general.Format || 'Not reported', 'Matroska / WebM');
+
+  if (videos.length === 0) {
+    addCheck(checks, 'Video stream', false, 'No video stream found', 'One VP9 or AV1 video stream');
+  } else {
+    if (videos.length > 1) {
+      addWarning(checks, 'Video streams', `${videos.length} streams`, 'One primary video stream');
+    }
+
+    const video = videos[0];
+    const format = String(video.Format || '').toUpperCase();
+    const isVp9 = format === 'VP9';
+    const isAv1 = format === 'AV1';
+    addCheck(checks, 'Video codec', isVp9 || isAv1,
+      [video.Format, video.Format_Profile].filter(Boolean).join(' · ') || 'Not reported',
+      'VP9 Profile 0 or AV1 Main');
+
+    if (isVp9) {
+      const profile = normalizeVp9Profile(video.Format_Profile);
+      addCheck(checks, 'VP9 profile', profile === '0',
+        profile ? `Profile ${profile}` : 'Not reported', 'Profile 0');
+    } else if (isAv1) {
+      const profile = String(video.Format_Profile || '').trim();
+      addCheck(checks, 'AV1 profile', /^main(?:@|\b)/i.test(profile),
+        profile || 'Not reported', 'Main');
+    }
+
+    const width = Number(video.Width || 0);
+    const height = Number(video.Height || 0);
+    const dimensionsOk = width > 0 && height > 0 && width <= 8192 && height <= 4320 && width * height <= 8192 * 4320;
+    addCheck(checks, 'Dimensions', dimensionsOk,
+      width && height ? `${width} × ${height}` : 'Not reported', 'Maximum 8192 × 4320');
+
+    const chroma = String(video.ChromaSubsampling || video.ChromaSubsampling_String || '').trim();
+    const bitDepth = Number(video.BitDepth || 0);
+    const colorSpace = String(video.ColorSpace || '').toUpperCase();
+    addCheck(checks, 'Pixel format', colorSpace === 'YUV' && chroma.startsWith('4:2:0') && bitDepth === 8,
+      `${colorSpace || '?'} ${chroma || '?'} ${bitDepth || '?'}-bit`, '8-bit YUV 4:2:0');
+
+    const matrix = String(video.matrix_coefficients || video.Matrix_Coefficients || '').toUpperCase();
+    addCheck(checks, 'Color matrix', matrix === 'BT.709', matrix || 'Not tagged', 'Explicit BT.709');
+
+    const range = String(video.colour_range || video.Color_Range || '').toLowerCase();
+    addCheck(checks, 'Color range', range === 'limited', range || 'Not tagged', 'Limited range');
+
+    const mode = String(video.FrameRate_Mode || '').toUpperCase();
+    const frameRate = video.FrameRate ? `${Number(video.FrameRate).toFixed(3)} FPS` : 'Not reported';
+    addCheck(checks, 'Frame rate mode', mode === 'CFR',
+      mode ? `${mode} · ${frameRate}` : frameRate, 'CFR');
+  }
+
+  if (audios.length === 0) {
+    addCheck(checks, 'Audio streams', true, 'None', 'Video-only files are supported');
+  } else {
+    addCheck(checks, 'Audio streams', audios.length <= 6,
+      `${audios.length} track${audios.length === 1 ? '' : 's'}`, '1–6 independent tracks');
+
+    const formats = uniqueValues(audios.map((audio) => audio.Format || 'unknown'));
+    addCheck(checks, 'Audio codec', audios.every((audio) => String(audio.Format || '').toLowerCase() === 'opus'),
+      formats.join(', '), 'Opus on every track');
+
+    const audioDescriptions = uniqueValues(audios.map((audio) =>
+      `${Number(audio.SamplingRate || 0) || '?'} Hz · ${Number(audio.Channels || 0) || '?'} ch`));
+    addCheck(checks, 'Audio format', audios.every((audio) => Number(audio.SamplingRate) === 48000 && Number(audio.Channels) === 2),
+      audioDescriptions.join(', '), '48 kHz stereo on every track');
+
+    if (audios.length > 1) {
+      const delays = audios.map((audio) => finiteNumber(audio.Delay));
+      if (delays.every((delay) => delay !== null)) {
+        const sameStart = delays.every((delay) => Math.abs(delay - delays[0]) < 0.0005);
+        addCheck(checks, 'Audio start', sameStart,
+          uniqueValues(delays.map((delay) => `${(delay * 1000).toFixed(3)} ms`)).join(', '),
+          'Every track begins at the same source time');
+      } else {
+        addWarning(checks, 'Audio start', 'Not fully reported', 'Every track should begin at the same source time');
+      }
+    }
+  }
+
+  return {
+    checks,
+    passed: checks.every((item) => item.state !== 'bad'),
+    warned: checks.some((item) => item.state === 'warn'),
+  };
+}
+
+function addCheck(checks, label, ok, value, expected) {
+  checks.push({ label, value: String(value), expected, state: ok ? 'ok' : 'bad' });
+}
+
+function addWarning(checks, label, value, expected) {
+  checks.push({ label, value: String(value), expected, state: 'warn' });
+}
+
+function normalizeVp9Profile(value) {
+  const match = String(value || '').match(/\d+/);
+  return match ? match[0] : '';
+}
+
+function finiteNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function uniqueValues(values) {
+  return [...new Set(values.map(String))];
+}
+
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes < 1024) return `${bytes || 0} B`;
+  const units = ['KiB', 'MiB', 'GiB', 'TiB'];
+  let value = bytes;
+  let unit = -1;
+  do {
+    value /= 1024;
+    unit += 1;
+  } while (value >= 1024 && unit < units.length - 1);
+  return `${value.toFixed(value >= 10 ? 1 : 2)} ${units[unit]}`;
+}
+
+function markIcon(state) {
+  if (state === 'ok') return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>';
+  if (state === 'warn') return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M12 9v4m0 4h.01"/></svg>';
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6L6 18M6 6l12 12"/></svg>';
+}
+
+function renderResult(filename, analysis, rawResult) {
+  document.getElementById('filename-chip').textContent = filename;
+
+  const table = document.getElementById('check-table');
+  table.replaceChildren(...analysis.checks.map((item) => {
+    const row = document.createElement('div');
+    row.className = 'check-row';
+
+    const mark = document.createElement('div');
+    mark.className = `check-mark ${item.state}`;
+    mark.innerHTML = markIcon(item.state);
+
+    const label = document.createElement('div');
+    label.className = 'check-label';
+    label.textContent = item.label;
+
+    const value = document.createElement('div');
+    value.className = 'check-value';
+    value.append(document.createTextNode(item.value));
+    const expected = document.createElement('span');
+    expected.className = 'expected';
+    expected.textContent = `expects ${item.expected}`;
+    value.append(expected);
+
+    row.append(mark, label, value);
+    return row;
+  }));
+
+  const verdict = document.getElementById('verdict');
+  const icon = document.getElementById('verdict-icon');
+  const title = document.getElementById('verdict-title');
+  const description = document.getElementById('verdict-desc');
+  const actions = document.getElementById('actions');
+
+  if (analysis.passed) {
+    verdict.className = 'verdict pass';
+    icon.innerHTML = markIcon('ok');
+    title.textContent = analysis.warned ? 'Looks compatible' : 'This file should work';
+    description.textContent = analysis.warned
+      ? 'The checked format fields match, but one or more metadata fields could not be confirmed.'
+      : 'Every checked field matches WebMiere\u2019s requirements.';
+    actions.innerHTML = '<a class="button primary" href="https://github.com/KawaiiEngine/WebMiere/releases/latest" target="_blank" rel="noopener">Download WebMiere</a><button class="button secondary" type="button" onclick="wmReset()">Check another file</button>';
+  } else {
+    verdict.className = 'verdict fail';
+    icon.innerHTML = markIcon('bad');
+    title.textContent = 'This file is outside WebMiere\u2019s scope';
+    description.textContent = 'One or more checked fields do not match WebMiere\u2019s requirements.';
+    actions.innerHTML = '<a class="button secondary" href="https://github.com/KawaiiEngine/WebMiere#readme" target="_blank" rel="noopener">Read supported formats</a><button class="button secondary" type="button" onclick="wmReset()">Check another file</button>';
+  }
+}
+</script>
+</body>
+</html>

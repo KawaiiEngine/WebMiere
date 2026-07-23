@@ -396,7 +396,7 @@ function renderResult(filename, analysis, rawResult) {
     description.textContent = analysis.warned
       ? 'The checked format fields match, but one or more metadata fields could not be confirmed.'
       : 'Every checked field matches WebMiere\u2019s requirements.';
-    actions.innerHTML = '<a class="button primary" href="https://github.com/KawaiiEngine/WebMiere/releases/latest" target="_blank" rel="noopener">Download WebMiere</a><button class="button secondary" type="button" onclick="wmReset()">Check another file</button>';
+    actions.innerHTML = '<span class="button primary" aria-disabled="true">Downloads temporarily unavailable</span><button class="button secondary" type="button" onclick="wmReset()">Check another file</button>';
   } else {
     verdict.className = 'verdict fail';
     icon.innerHTML = markIcon('bad');

@@ -2,6 +2,10 @@
   <img src="docs/images/webmiere-hero.png" alt="WebMiere - OBS and YouTube-style VP9, AV1, and Opus importer for Adobe Premiere Pro" width="100%">
 </p>
 
+> [!NOTE]
+> Binary downloads are temporarily unavailable while an independent code review is being completed.
+> Source code and release history remain available.
+
 # WebMiere
 
 **Drop OBS recordings and YouTube-style WebM/MKV media straight into Adobe Premiere Pro.**
@@ -122,7 +126,7 @@ In the media tested so far, YouTube delivery streams have been CFR. True VFR rem
 Unsupported files containing multiple audio streams are rejected as a whole rather than partially imported.
 
 ## Installation
-
+Binary installation is temporarily unavailable. The instructions below describe the released installer workflow and are retained for reference.
 1. Install or update the NVIDIA graphics driver.
 2. Close Adobe Premiere Pro.
 3. Launch `WebMiere-Setup.exe`.

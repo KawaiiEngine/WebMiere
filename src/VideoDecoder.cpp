@@ -605,18 +605,10 @@ bool VideoDecoder::OpenInternal(bool allowHw)
 			return false;
 		}
 		const AVPixFmtDescriptor *pd = av_pix_fmt_desc_get(static_cast<AVPixelFormat>(par->format));
-		if (isSupportedVideo &&
-			(par->format == AV_PIX_FMT_NONE || pd == nullptr ||
-			 (pd->flags & AV_PIX_FMT_FLAG_HWACCEL) != 0 ||
+		if (isSupportedVideo && pd != nullptr &&
+			((pd->flags & AV_PIX_FMT_FLAG_HWACCEL) != 0 ||
 			 (pd->flags & AV_PIX_FMT_FLAG_RGB) != 0 ||
-			 (pd->flags & AV_PIX_FMT_FLAG_ALPHA) != 0 ||
-			 pd->comp[0].depth != 8 ||
-			 pd->log2_chroma_w != 1 || pd->log2_chroma_h != 1))
-		{
-			Close();
-			return false;
-		}
-		if (isSupportedVideo && !Vp9oIsStrictBt709(par))
+			 (pd->flags & AV_PIX_FMT_FLAG_ALPHA) != 0))
 		{
 			Close();
 			return false;
@@ -995,9 +987,9 @@ bool VideoDecoder::DecodeFrameToSurface(int64_t targetFrame, Vp9oDecodedFrameVie
 
 		if (needSeek)
 		{
-						if (!SeekBeforeFrame(targetFrame))
+			if (!SeekBeforeFrame(targetFrame))
 			{
-								return false;
+				return false;
 			}
 		}
 
@@ -1005,7 +997,7 @@ bool VideoDecoder::DecodeFrameToSurface(int64_t targetFrame, Vp9oDecodedFrameVie
 		{
 			if (!DecodeNext())
 			{
-								break;
+				break;
 			}
 		}
 
@@ -1031,7 +1023,7 @@ bool VideoDecoder::DecodeFrameToSurface(int64_t targetFrame, Vp9oDecodedFrameVie
 
 	if (!ValidateDecodedFrameForView(mFrame))
 	{
-				return false;
+		return false;
 	}
 
 
@@ -1208,11 +1200,6 @@ bool VideoDecoder::ConvertSurfaceToYUV420P(const Vp9oDecodedFrameView &view,
 	}
 
 
-	if (src->color_range == AVCOL_RANGE_JPEG)
-	{
-				return false;
-	}
-
 	const int srcFmt = src->format;
 	const int srcW   = src->width;
 	const int srcH   = src->height;
@@ -1221,34 +1208,17 @@ bool VideoDecoder::ConvertSurfaceToYUV420P(const Vp9oDecodedFrameView &view,
 		return false;
 	}
 
-
 	const bool isYuv420p = (srcFmt == AV_PIX_FMT_YUV420P);
-	const bool isNv12    = (srcFmt == AV_PIX_FMT_NV12);
-	if (!isYuv420p && !isNv12)
-	{
-				return false;
-	}
-	if (isYuv420p && !ValidateYuv420PFrame(src))
-	{
-		return false;
-	}
-	if (isNv12 && !ValidateNV12Frame(src))
-	{
-		return false;
-	}
-
 	const int cW = dstW / 2;
 	const int cH = dstH / 2;
 
-
-	if (isYuv420p && srcW == dstW && srcH == dstH)
+	if (isYuv420p && srcW == dstW && srcH == dstH && src->color_range != AVCOL_RANGE_JPEG && ValidateYuv420PFrame(src))
 	{
 		CopyPlaneRespectingRowBytes(dstY, dstYRowBytes, src->data[0], src->linesize[0], dstW, dstH);
 		CopyPlaneRespectingRowBytes(dstU, dstURowBytes, src->data[1], src->linesize[1], cW, cH);
 		CopyPlaneRespectingRowBytes(dstV, dstVRowBytes, src->data[2], src->linesize[2], cW, cH);
-				return true;
+		return true;
 	}
-
 
 	if (mSwsYuv == nullptr ||
 		srcFmt != mSwsYuvSrcFmt || srcW != mSwsYuvSrcW || srcH != mSwsYuvSrcH ||
@@ -1261,13 +1231,15 @@ bool VideoDecoder::ConvertSurfaceToYUV420P(const Vp9oDecodedFrameView &view,
 		{
 			return false;
 		}
+		const int srcRange = (src->color_range == AVCOL_RANGE_JPEG) ? 1 : 0;
+		const int *coef = sws_getCoefficients(SWS_CS_ITU709);
+		sws_setColorspaceDetails(mSwsYuv, coef, srcRange, coef, 0, 0, 1 << 16, 1 << 16);
 		mSwsYuvSrcFmt = srcFmt;
 		mSwsYuvSrcW   = srcW;
 		mSwsYuvSrcH   = srcH;
 		mSwsYuvDstW   = dstW;
 		mSwsYuvDstH   = dstH;
-			}
-
+	}
 
 	uint8_t *dstData[4]     = { dstY, dstU, dstV, nullptr };
 	int      dstLinesize[4] = { dstYRowBytes, dstURowBytes, dstVRowBytes, 0 };
@@ -1277,7 +1249,7 @@ bool VideoDecoder::ConvertSurfaceToYUV420P(const Vp9oDecodedFrameView &view,
 	{
 		return false;
 	}
-		return true;
+	return true;
 }
 
 

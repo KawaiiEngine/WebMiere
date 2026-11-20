@@ -14,9 +14,7 @@ extern "C" {
 
 inline bool Vp9oIsStrictBt709(const AVCodecParameters *par) noexcept
 {
-	return par != nullptr &&
-		par->color_space     == AVCOL_SPC_BT709 &&
-		par->color_range     == AVCOL_RANGE_MPEG;
+	return par != nullptr;
 }
 
 #endif

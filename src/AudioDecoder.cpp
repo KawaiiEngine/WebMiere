@@ -172,24 +172,6 @@ bool AudioDecoder::Open(const prUTF16Char *path, int ffmpegAudioStreamIndex)
 	}
 
 
-	if (st->codecpar->codec_id != AV_CODEC_ID_OPUS)
-	{
-		Close();
-		return false;
-	}
-
-	if (st->codecpar->ch_layout.nb_channels != 2)
-	{
-		Close();
-		return false;
-	}
-
-	if (st->codecpar->sample_rate != 48000)
-	{
-		Close();
-		return false;
-	}
-
 	const AVCodec *dec = avcodec_find_decoder(st->codecpar->codec_id);
 	if (dec == nullptr)
 	{
@@ -214,11 +196,7 @@ bool AudioDecoder::Open(const prUTF16Char *path, int ffmpegAudioStreamIndex)
 		return false;
 	}
 
-	mSampleRate  = st->codecpar->sample_rate;
-	if (mSampleRate <= 0)
-	{
-		mSampleRate = 48000;
-	}
+	mSampleRate  = 48000;
 	mOutChannels = 2;
 	mTimeBaseNum = st->time_base.num;
 	mTimeBaseDen = st->time_base.den;

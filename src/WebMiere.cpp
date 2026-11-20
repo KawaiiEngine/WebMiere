@@ -1204,6 +1204,54 @@ SDKGetIndFormat(
 			break;
 		}
 
+		case 2:
+		{
+			char ext[256] = "ivf";
+			formatRec->filetype			= 'A1VF';
+			formatRec->canWriteTimecode	= kPrFalse;
+			formatRec->flags			= xfCanImport | xfCanOpen | xfIsMovie;
+			strcpy_s(formatRec->FormatName,        sizeof(formatRec->FormatName),        "AV1 Video File (IVF)");
+			strcpy_s(formatRec->FormatShortName,   sizeof(formatRec->FormatShortName),   "IVF");
+			strcpy_s(formatRec->PlatformExtension, sizeof(formatRec->PlatformExtension), ext);
+			break;
+		}
+
+		case 3:
+		{
+			char ext[256] = "mp4";
+			formatRec->filetype			= 'mp42';
+			formatRec->canWriteTimecode	= kPrFalse;
+			formatRec->flags			= xfCanImport | xfCanOpen | xfIsMovie;
+			strcpy_s(formatRec->FormatName,        sizeof(formatRec->FormatName),        "MPEG-4 Video (AV1/VP9)");
+			strcpy_s(formatRec->FormatShortName,   sizeof(formatRec->FormatShortName),   "MP4");
+			strcpy_s(formatRec->PlatformExtension, sizeof(formatRec->PlatformExtension), ext);
+			break;
+		}
+
+		case 4:
+		{
+			char ext[256] = "mov";
+			formatRec->filetype			= 'MooV';
+			formatRec->canWriteTimecode	= kPrFalse;
+			formatRec->flags			= xfCanImport | xfCanOpen | xfIsMovie;
+			strcpy_s(formatRec->FormatName,        sizeof(formatRec->FormatName),        "QuickTime Movie (AV1/VP9)");
+			strcpy_s(formatRec->FormatShortName,   sizeof(formatRec->FormatShortName),   "MOV");
+			strcpy_s(formatRec->PlatformExtension, sizeof(formatRec->PlatformExtension), ext);
+			break;
+		}
+
+		case 5:
+		{
+			char ext[256] = "av1";
+			formatRec->filetype			= 'AV01';
+			formatRec->canWriteTimecode	= kPrFalse;
+			formatRec->flags			= xfCanImport | xfCanOpen | xfIsMovie;
+			strcpy_s(formatRec->FormatName,        sizeof(formatRec->FormatName),        "Raw AV1 Video");
+			strcpy_s(formatRec->FormatShortName,   sizeof(formatRec->FormatShortName),   "AV1");
+			strcpy_s(formatRec->PlatformExtension, sizeof(formatRec->PlatformExtension), ext);
+			break;
+		}
+
 		default:
 			result = imBadFormatIndex;
 			break;
@@ -1462,7 +1510,7 @@ SDKGetInfo8(
 	if (ldata->hasVideo)
 	{
 		fileInfo8->hasVideo					= kPrTrue;
-		fileInfo8->vidInfo.subType			= WEBMIERE_VIDEO_SUBTYPE_VP9;
+		fileInfo8->vidInfo.subType			= (probe.videoCodec == WEBMIERE_CODEC_AV1) ? 'AV01' : WEBMIERE_VIDEO_SUBTYPE_VP9;
 		fileInfo8->vidInfo.imageWidth		= ldata->width;
 		fileInfo8->vidInfo.imageHeight		= ldata->height;
 		fileInfo8->vidInfo.depth			= 32;
@@ -1509,9 +1557,9 @@ SDKGetInfo8(
 		{
 			fileInfo8->streamsAsComp = kPrFalse;
 		}
-		result = (fileInfo8->streamIdx == premiereStreamCount - 1)
-			? imBadStreamIndex
-			: imIterateStreams;
+		result = (fileInfo8->streamIdx < premiereStreamCount - 1)
+			? imIterateStreams
+			: malNoError;
 	}
 
 	return result;

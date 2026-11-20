@@ -174,25 +174,23 @@ bool ProbeMedia(const prUTF16Char *path, MediaProbeInfo *out, std::string *errMs
 
 		const bool isSupportedVideo = IsSupportedVideoCodec(out->videoCodec);
 		const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(static_cast<AVPixelFormat>(par->format));
-		if (isSupportedVideo && (par->format == AV_PIX_FMT_NONE || desc == nullptr))
+		if (isSupportedVideo && desc != nullptr)
 		{
-			if (errMsg) *errMsg = "unknown pixel format";
-			return false;
-		}
-		if (isSupportedVideo && (desc->flags & AV_PIX_FMT_FLAG_HWACCEL) != 0)
-		{
-			if (errMsg) *errMsg = "hardware-only pixel format not supported";
-			return false;
-		}
-		if (isSupportedVideo && (desc->flags & AV_PIX_FMT_FLAG_RGB) != 0)
-		{
-			if (errMsg) *errMsg = "RGB pixel format not supported";
-			return false;
-		}
-		if (isSupportedVideo && (desc->flags & AV_PIX_FMT_FLAG_ALPHA) != 0)
-		{
-			if (errMsg) *errMsg = "alpha not supported";
-			return false;
+			if ((desc->flags & AV_PIX_FMT_FLAG_HWACCEL) != 0)
+			{
+				if (errMsg) *errMsg = "hardware-only pixel format not supported";
+				return false;
+			}
+			if ((desc->flags & AV_PIX_FMT_FLAG_RGB) != 0)
+			{
+				if (errMsg) *errMsg = "RGB pixel format not supported";
+				return false;
+			}
+			if ((desc->flags & AV_PIX_FMT_FLAG_ALPHA) != 0)
+			{
+				if (errMsg) *errMsg = "alpha not supported";
+				return false;
+			}
 		}
 
 		out->isYuv420p8 = (desc != nullptr) &&
@@ -200,17 +198,6 @@ bool ProbeMedia(const prUTF16Char *path, MediaProbeInfo *out, std::string *errMs
 						   (desc->comp[0].depth == 8 &&
 						    desc->log2_chroma_w == 1 && desc->log2_chroma_h == 1 &&
 						    (desc->flags & AV_PIX_FMT_FLAG_RGB) == 0));
-		if (isSupportedVideo && !out->isYuv420p8)
-		{
-			if (errMsg) *errMsg = "pixel format is not 8-bit 4:2:0";
-			return false;
-		}
-
-		if (isSupportedVideo && !Vp9oIsStrictBt709(par))
-		{
-			if (errMsg) *errMsg = "only explicitly tagged BT.709 limited-range video is supported";
-			return false;
-		}
 
 
 		AVRational fr = st->avg_frame_rate;
@@ -261,25 +248,23 @@ bool ProbeMedia(const prUTF16Char *path, MediaProbeInfo *out, std::string *errMs
 
 		audio.ffmpegStreamIndex		= static_cast<int>(streamIndex);
 		audio.codec					= MapCodec(par->codec_id);
-		audio.sampleRate				= par->sample_rate;
-		audio.channels				= par->ch_layout.nb_channels;
-		audio.startTime				= st->start_time;
-		audio.timeBaseNum			= st->time_base.num;
-		audio.timeBaseDen			= st->time_base.den;
+		audio.sampleRate				= 48000;
+		audio.channels				= 2;
+		audio.startTime				= (st->start_time == AV_NOPTS_VALUE) ? 0 : st->start_time;
+		audio.timeBaseNum			= (st->time_base.num > 0) ? st->time_base.num : 1;
+		audio.timeBaseDen			= (st->time_base.den > 0) ? st->time_base.den : 48000;
 		audio.initialPaddingSamples	= par->initial_padding;
 		audio.seekPrerollSamples		= par->seek_preroll;
 
-		if (audio.codec != WEBMIERE_CODEC_OPUS ||
-			par->ch_layout.nb_channels != 2 ||
-			par->sample_rate != 48000)
+		if (par->ch_layout.nb_channels < 1 || par->ch_layout.nb_channels > 8)
 		{
-			if (errMsg) *errMsg = "audio stream is not Opus stereo 48kHz";
+			if (errMsg) *errMsg = "unsupported audio channel count";
 			return false;
 		}
 
 		double durSec = StreamDurationSeconds(fmt.get(), st);
 		audio.sourceSampleFrames =
-			static_cast<int64_t>(std::llround(durSec * static_cast<double>(par->sample_rate)));
+			static_cast<int64_t>(std::llround(durSec * 48000.0));
 		if (audio.sourceSampleFrames < 0)
 		{
 			audio.sourceSampleFrames = 0;
@@ -290,12 +275,6 @@ bool ProbeMedia(const prUTF16Char *path, MediaProbeInfo *out, std::string *errMs
 	if (out->audioStreamCount > 1)
 	{
 		const MediaProbeInfo::AudioStreamProbeInfo &primary = out->audioStreams[0];
-		if (primary.startTime == AV_NOPTS_VALUE ||
-			primary.timeBaseNum <= 0 || primary.timeBaseDen <= 0)
-		{
-			if (errMsg) *errMsg = "missing audio start timestamp";
-			return false;
-		}
 		const AVRational sampleBase = { 1, 48000 };
 		const AVRational primaryTimeBase = { primary.timeBaseNum, primary.timeBaseDen };
 		const int64_t primaryStartSample =
@@ -304,12 +283,6 @@ bool ProbeMedia(const prUTF16Char *path, MediaProbeInfo *out, std::string *errMs
 		for (int i = 1; i < out->audioStreamCount; i++)
 		{
 			const MediaProbeInfo::AudioStreamProbeInfo &audio = out->audioStreams[i];
-			if (audio.startTime == AV_NOPTS_VALUE ||
-				audio.timeBaseNum <= 0 || audio.timeBaseDen <= 0)
-			{
-				if (errMsg) *errMsg = "missing audio start timestamp";
-				return false;
-			}
 			const AVRational audioTimeBase = { audio.timeBaseNum, audio.timeBaseDen };
 			const int64_t audioStartSample =
 				av_rescale_q(audio.startTime, audioTimeBase, sampleBase);

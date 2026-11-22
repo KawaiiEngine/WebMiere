@@ -7,8 +7,8 @@
 
 
 
-#ifndef VP9OPUS_DEMUXER_H
-#define VP9OPUS_DEMUXER_H
+#ifndef WEBMIERE_DEMUXER_H
+#define WEBMIERE_DEMUXER_H
 
 #include <cstdint>
 #include <string>
@@ -32,6 +32,7 @@ struct MediaProbeInfo
 {
 
 	bool		hasVideo;
+	bool		hasAlpha;
 	WebMiereCodec	videoCodec;
 	int			width;
 	int			height;
@@ -55,7 +56,7 @@ struct MediaProbeInfo
 		int			timeBaseDen;
 		int			initialPaddingSamples;
 		int			seekPrerollSamples;
-	} audioStreams[kVp9oMaxAudioStreams];
+	} audioStreams[kWebMiereMaxAudioStreams];
 };
 
 

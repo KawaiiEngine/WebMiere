@@ -8,11 +8,18 @@
 #define WEBMIERE_COLOR_POLICY_H
 
 extern "C" {
+#include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
 #include <libavutil/pixfmt.h>
 }
 
-inline bool Vp9oIsStrictBt709(const AVCodecParameters *par) noexcept
+inline bool WebMiereHasAlphaMode(const AVStream *stream) noexcept
+{
+	const AVDictionaryEntry *tag = av_dict_get(stream->metadata, "alpha_mode", nullptr, 0);
+	return tag && tag->value[0] == '1' && tag->value[1] == '\0';
+}
+
+inline bool WebMiereIsStrictBt709(const AVCodecParameters *par) noexcept
 {
 	return par != nullptr &&
 		par->color_space     == AVCOL_SPC_BT709 &&

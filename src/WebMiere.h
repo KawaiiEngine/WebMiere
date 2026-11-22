@@ -31,11 +31,11 @@
 #define WEBMIERE_FORMAT_SHORT    "WebMiere"
 
 
-#ifndef VP9O_ENABLE_YUV420P_RETURN
-#define VP9O_ENABLE_YUV420P_RETURN  1
+#ifndef WEBMIERE_ENABLE_YUV420P_RETURN
+#define WEBMIERE_ENABLE_YUV420P_RETURN  1
 #endif
-#ifndef VP9O_PREFER_YUV420P_RETURN
-#define VP9O_PREFER_YUV420P_RETURN  1
+#ifndef WEBMIERE_PREFER_YUV420P_RETURN
+#define WEBMIERE_PREFER_YUV420P_RETURN  1
 #endif
 
 
@@ -43,17 +43,17 @@ class VideoDecoder;
 class AudioDecoder;
 
 
-enum Vp9oOutputKind
+enum WebMiereOutputKind
 {
-	VP9O_OUTPUT_BGRA8 = 0,
-	VP9O_OUTPUT_YUV420P8
+	WEBMIERE_OUTPUT_BGRA8 = 0,
+	WEBMIERE_OUTPUT_YUV420P8
 };
 
 
-struct Vp9oOutputFormat
+struct WebMiereOutputFormat
 {
 	PrPixelFormat	prFormat;
-	Vp9oOutputKind	kind;
+	WebMiereOutputKind	kind;
 	csSDK_int32		width;
 	csSDK_int32		height;
 };
@@ -65,6 +65,7 @@ typedef struct
 	csSDK_int32				importerID;
 	csSDK_int32				premiereStreamIdx;
 	char					hasVideo;
+	char					hasAlpha;
 	char					hasAudio;
 
 

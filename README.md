@@ -43,7 +43,7 @@ WebMiere uses NVIDIA NVDEC, CUDA, and NPP, and prioritizes responsive timeline e
 | **Containers** | WebM / Matroska (`.webm`, `.mkv`) |
 | **Video Streams** | Exactly one |
 | **Video** | VP9 Profile 0 / AV1 Main SDR |
-| **Pixel Format** | 8-bit YUV 4:2:0 |
+| **Pixel Format** | 8-bit YUV 4:2:0, with optional VP9 straight alpha |
 | **Color** | SDR, BT.709 matrix, limited range |
 | **Frame Rate** | Constant frame rate |
 | **Maximum Dimensions** | 8192 × 4320 |
@@ -54,8 +54,12 @@ WebMiere uses NVIDIA NVDEC, CUDA, and NPP, and prioritizes responsive timeline e
 
 Video-only files remain supported.
 
+### VP9 transparency
+
+Premiere Pro can import and composite VP9 Profile 0 clips that carry a mask in WebM or Matroska (`AlphaMode` 1, VP9 mask in `BlockAdditional` ID 1). WebMiere decodes the color and mask with NVDEC on compatible GPUs and returns straight-alpha BGRA at native or reduced resolution. Resizing weights the color by coverage to preserve transparent edges. For eligible half-size requests, including 3840 × 2160 to 1920 × 1080, four CPU bands convert and reduce the downloaded frames in parallel.
+
 > **Not sure whether your file is compatible?**  
-> [Check it with WebMiere Checker](https://kawaiiengine.github.io/WebMiere/checker/) — the check runs entirely in your browser, and nothing is uploaded.
+> [Check it with WebMiere Checker](https://kawaiiengine.github.io/WebMiere/checker/) — the check runs entirely in your browser, and nothing is uploaded. The Checker reads media metadata and cannot verify the VP9 alpha payload.
 
 ## Download
 
@@ -110,12 +114,14 @@ In the media tested so far, YouTube delivery streams have been CFR. True VFR rem
 - Six-track routing and long-duration synchronization were verified against direct FFmpeg decoding using an approximately 15-minute recording and a recording longer than three hours.
 - No measurable audio drift was observed in the tested recordings.
 - Existing single-track AV1 SDR/Opus editing and export behavior was also revalidated.
+- VP9 alpha import, transparency compositing, and MP4 export were verified in Adobe Premiere Pro.
 
 ## Unsupported Media
 
 - True variable-frame-rate video
 - VP9 or AV1 10-bit or 12-bit video
-- VP9 or AV1 4:2:2, 4:4:4, RGB, or alpha
+- VP9 or AV1 4:2:2, 4:4:4, or RGB
+- AV1 alpha
 - HDR, BT.2020, PQ, or HLG media, including AV1 HDR media
 - Full-range video
 - H.264, HEVC, ProRes, and other non-VP9/non-AV1 video codecs
@@ -248,7 +254,8 @@ If a YouTube download that should be supported does not import, download it agai
 - Audio timing is normalized relative to the shared source start time. Small startup residues are handled at the beginning of each stream rather than allowed to become progressive audio drift.
 - YouTube/DASH muxing may produce small differences between video and audio end times. When a stream-specific duration is unavailable, a container-duration fallback can result in a short final-frame hold. This has not shown a visible problem in normal tested YouTube material.
 - True VFR files may be accepted as nominal CFR without exact timestamp reconstruction; frames may be selected, repeated, or skipped without a warning.
-- Premiere may occasionally request BGRA output for thumbnails, isolated frames, effects, or internal display paths. This is expected; normal playback generally uses YUV420P when available.
+- The importer registers with priority 224 in Premiere Pro and 37 when the Adobe SDK identifies After Effects. These values were verified in the SDK host. Importer selection in After Effects has not been tested. Premiere Pro remains the supported host.
+- For opaque clips, Premiere may occasionally request BGRA output for thumbnails, isolated frames, effects, or internal display paths. This is expected; normal playback generally uses YUV420P when available.
 
 ## License
 

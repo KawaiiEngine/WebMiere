@@ -160,13 +160,19 @@ bool ProbeMedia(const prUTF16Char *path, MediaProbeInfo *out, std::string *errMs
 		out->width			= par->width;
 		out->height			= par->height;
 		out->avPixelFormat	= par->format;
+		out->hasAlpha = WebMiereHasAlphaMode(st);
+		if (out->hasAlpha && out->videoCodec != WEBMIERE_CODEC_VP9)
+		{
+			if (errMsg) *errMsg = "WebM alpha requires VP9";
+			return false;
+		}
 
 		if (!IsSupportedVideoCodec(out->videoCodec))
 		{
 			if (errMsg) *errMsg = "video codec is not VP9 or AV1";
 			return false;
 		}
-		if (!Vp9oIsValidVideoSize(par->width, par->height))
+		if (!WebMiereIsValidVideoSize(par->width, par->height))
 		{
 			if (errMsg) *errMsg = "invalid video dimensions";
 			return false;
@@ -189,7 +195,8 @@ bool ProbeMedia(const prUTF16Char *path, MediaProbeInfo *out, std::string *errMs
 			if (errMsg) *errMsg = "RGB pixel format not supported";
 			return false;
 		}
-		if (isSupportedVideo && (desc->flags & AV_PIX_FMT_FLAG_ALPHA) != 0)
+		if (isSupportedVideo && (desc->flags & AV_PIX_FMT_FLAG_ALPHA) != 0 &&
+			!(out->hasAlpha && par->format == AV_PIX_FMT_YUVA420P))
 		{
 			if (errMsg) *errMsg = "alpha not supported";
 			return false;
@@ -206,7 +213,7 @@ bool ProbeMedia(const prUTF16Char *path, MediaProbeInfo *out, std::string *errMs
 			return false;
 		}
 
-		if (isSupportedVideo && !Vp9oIsStrictBt709(par))
+		if (isSupportedVideo && !WebMiereIsStrictBt709(par))
 		{
 			if (errMsg) *errMsg = "only explicitly tagged BT.709 limited-range video is supported";
 			return false;
@@ -249,7 +256,7 @@ bool ProbeMedia(const prUTF16Char *path, MediaProbeInfo *out, std::string *errMs
 		{
 			continue;
 		}
-		if (out->audioStreamCount >= kVp9oMaxAudioStreams)
+		if (out->audioStreamCount >= kWebMiereMaxAudioStreams)
 		{
 			if (errMsg) *errMsg = "more than 6 audio streams";
 			return false;

@@ -7,15 +7,17 @@
 
 
 
-#ifndef VP9OPUS_VIDEO_DECODER_H
-#define VP9OPUS_VIDEO_DECODER_H
+#ifndef WEBMIERE_VIDEO_DECODER_H
+#define WEBMIERE_VIDEO_DECODER_H
 
 #include <cstdint>
 #include <string>
 #include <mutex>
+#include <memory>
 
 #include "PrSDKTypes.h"
 
+#include "HalfAlphaConverter.h"
 struct AVFormatContext;
 struct AVCodecContext;
 struct AVFrame;
@@ -23,7 +25,7 @@ struct AVPacket;
 struct SwsContext;
 struct AVCUDADeviceContext;
 
-struct Vp9oDecodedFrameView
+struct WebMiereDecodedFrameView
 {
 	const AVFrame	*frame;
 	int				width;
@@ -47,9 +49,11 @@ public:
 	void Close();
 
 	bool IsOpen() const { return mOpened; }
+	bool HasAlpha() const { return mAlphaCodec != nullptr; }
 	int  Width()  const { return mWidth; }
 	int  Height() const { return mHeight; }
 	bool HadReadError() const noexcept { return mLastReadError != 0; }
+	bool HadDecodeError() const noexcept { return mAlphaDecodeError; }
 	int  LastReadError() const noexcept { return mLastReadError; }
 
 	bool DecodeFrameToBGRA(int64_t targetFrame,
@@ -73,11 +77,11 @@ private:
 	bool	DecodeToTargetAndConvert(int64_t targetFrame, uint8_t *dst, int rowBytes, int w, int h);
 
 
-	bool	DecodeFrameToSurface(int64_t targetFrame, Vp9oDecodedFrameView *outView);
-	bool	ConvertSurfaceToBGRA(const Vp9oDecodedFrameView &view, uint8_t *dst, int dstRowBytes, int dstW, int dstH);
+	bool	DecodeFrameToSurface(int64_t targetFrame, WebMiereDecodedFrameView *outView);
+	bool	ConvertSurfaceToBGRA(const WebMiereDecodedFrameView &view, uint8_t *dst, int dstRowBytes, int dstW, int dstH);
 
 
-	bool	ConvertSurfaceToYUV420P(const Vp9oDecodedFrameView &view,
+	bool	ConvertSurfaceToYUV420P(const WebMiereDecodedFrameView &view,
 									uint8_t *dstY, int dstYRowBytes,
 									uint8_t *dstU, int dstURowBytes,
 									uint8_t *dstV, int dstVRowBytes,
@@ -86,14 +90,18 @@ private:
 
 	bool	SeekBeforeFrame(int64_t targetFrame);
 	bool	DecodeNext();
+	bool	DecodeNextWithAlpha();
+	int		ReadAlphaFramePair();
+	const AVFrame *SoftwareAlphaFrame();
+	bool	ConvertColorToBGRA(const AVFrame *src, uint8_t *firstRow, int stride, int width, int height);
 	int64_t	FrameIndexOf(const AVFrame *f) const;
-	bool	ConvertToBGRA(const AVFrame *f, uint8_t *dst, int dstRowBytes, int dstW, int dstH);
+	bool	ConvertToBGRA(const AVFrame *f, uint8_t *dst, int dstRowBytes, int dstW, int dstH, bool useHalfBands);
 
 
 	bool	ConvertToBGRA_CUDA(const AVFrame *f, uint8_t *dst, int dstRowBytes, int dstW, int dstH);
 
 
-	bool	ConvertCudaNV12ToYUV420P(const Vp9oDecodedFrameView &view,
+	bool	ConvertCudaNV12ToYUV420P(const WebMiereDecodedFrameView &view,
 									 uint8_t *dstY, int dstYRowBytes,
 									 uint8_t *dstU, int dstURowBytes,
 									 uint8_t *dstV, int dstVRowBytes,
@@ -115,6 +123,14 @@ private:
 
 	AVFormatContext	*mFmt;
 	AVCodecContext	*mCodecCtx;
+	AVCodecContext	*mAlphaCodec = nullptr;
+	AVFrame			*mAlphaFrame = nullptr;
+	AVFrame			*mAlphaReceive = nullptr;
+	AVFrame			*mAlphaSwFrame = nullptr;
+	AVPacket		*mAlphaPacket = nullptr;
+	AVFrame			*mColorScratch = nullptr;
+	std::unique_ptr<HalfAlphaConverter> mHalfAlpha;
+	AlphaDownloadLayout mColorDownload, mMaskDownload;
 	AVFrame			*mFrame;
 	AVFrame			*mReceiveFrame;
 	AVFrame			*mSwFrame;
@@ -139,6 +155,7 @@ private:
 	bool	mEofDrained;
 	int		mLastReadError;
 	bool	mFlushSent;
+	bool	mAlphaDecodeError = false;
 
 
 	int		mShortSeekThreshold;

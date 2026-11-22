@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.0 — 2026-11-22
+
+- Added VP9 alpha support for transparent WebM/MKV clips in Adobe Premiere Pro.
+- Added GPU-accelerated alpha decoding and optimized transparency-aware resizing.
+
 ## 1.2.2 — 2026-07-29
 
 - First release in the reorganized public repository.

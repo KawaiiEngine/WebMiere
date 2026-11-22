@@ -9,24 +9,24 @@
 
 #include <cstdint>
 
-constexpr int kVp9oMaxVideoWidth  = 8192;
-constexpr int kVp9oMaxVideoHeight = 4320;
-constexpr int kVp9oMaxAudioStreams = 6;
-constexpr int64_t kVp9oMaxVideoPixels =
-	static_cast<int64_t>(kVp9oMaxVideoWidth) * kVp9oMaxVideoHeight;
+constexpr int kWebMiereMaxVideoWidth  = 8192;
+constexpr int kWebMiereMaxVideoHeight = 4320;
+constexpr int kWebMiereMaxAudioStreams = 6;
+constexpr int64_t kWebMiereMaxVideoPixels =
+	static_cast<int64_t>(kWebMiereMaxVideoWidth) * kWebMiereMaxVideoHeight;
 
-inline bool Vp9oIsValidVideoSize(int width, int height) noexcept
+inline bool WebMiereIsValidVideoSize(int width, int height) noexcept
 {
 	return width > 0 &&
 		   height > 0 &&
-		   width <= kVp9oMaxVideoWidth &&
-		   height <= kVp9oMaxVideoHeight &&
-		   static_cast<int64_t>(width) * static_cast<int64_t>(height) <= kVp9oMaxVideoPixels;
+		   width <= kWebMiereMaxVideoWidth &&
+		   height <= kWebMiereMaxVideoHeight &&
+		   static_cast<int64_t>(width) * static_cast<int64_t>(height) <= kWebMiereMaxVideoPixels;
 }
 
-inline bool Vp9oIsValidYuv420Size(int width, int height) noexcept
+inline bool WebMiereIsValidYuv420Size(int width, int height) noexcept
 {
-	return Vp9oIsValidVideoSize(width, height) &&
+	return WebMiereIsValidVideoSize(width, height) &&
 		   (width & 1) == 0 &&
 		   (height & 1) == 0;
 }

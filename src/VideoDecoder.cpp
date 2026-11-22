@@ -10,6 +10,7 @@
 #define __STDC_CONSTANT_MACROS
 
 #include "VideoDecoder.h"
+#include "AlphaResize.h"
 #include "WebMiereLimits.h"
 #include "WebMiereColorPolicy.h"
 
@@ -21,16 +22,16 @@
 #include <new>
 
 
-#ifndef VP9O_ENABLE_NPP
-#define VP9O_ENABLE_NPP 1
+#ifndef WEBMIERE_ENABLE_NPP
+#define WEBMIERE_ENABLE_NPP 1
 #endif
 
 
-#ifndef VP9O_ENABLE_CUDA_YUV420P_DIRECT
-#define VP9O_ENABLE_CUDA_YUV420P_DIRECT 1
+#ifndef WEBMIERE_ENABLE_CUDA_YUV420P_DIRECT
+#define WEBMIERE_ENABLE_CUDA_YUV420P_DIRECT 1
 #endif
 
-#if VP9O_ENABLE_NPP
+#if WEBMIERE_ENABLE_NPP
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <npp.h>
@@ -47,7 +48,7 @@ extern "C" {
 #include <libavutil/mathematics.h>
 #include <libavutil/pixdesc.h>
 #include <libavutil/hwcontext.h>
-#if VP9O_ENABLE_NPP
+#if WEBMIERE_ENABLE_NPP
 #include <libavutil/hwcontext_cuda.h>
 #endif
 #include <libswscale/swscale.h>
@@ -67,7 +68,7 @@ struct AVBufferRefDeleter
 };
 using AVBufferRefGuard = std::unique_ptr<AVBufferRef, AVBufferRefDeleter>;
 
-#if VP9O_ENABLE_NPP
+#if WEBMIERE_ENABLE_NPP
 class CuCtxPushGuard
 {
 public:
@@ -102,15 +103,15 @@ private:
 	bool mPushed;
 };
 
-enum Vp9oCudaSyncMode
+enum WebMiereCudaSyncMode
 {
-	kVp9oCudaSyncContext = 0,
-	kVp9oCudaSyncProducer = 1,
-	kVp9oCudaSyncSameStream = 2,
-	kVp9oCudaSyncEvent = 3
+	kWebMiereCudaSyncContext = 0,
+	kWebMiereCudaSyncProducer = 1,
+	kWebMiereCudaSyncSameStream = 2,
+	kWebMiereCudaSyncEvent = 3
 };
 
-static Vp9oCudaSyncMode ReadCudaSyncModeFromEnv() noexcept
+static WebMiereCudaSyncMode ReadCudaSyncModeFromEnv() noexcept
 {
 	wchar_t value[32] = {};
 	const DWORD len = GetEnvironmentVariableW(
@@ -119,30 +120,30 @@ static Vp9oCudaSyncMode ReadCudaSyncModeFromEnv() noexcept
 		static_cast<DWORD>(sizeof(value) / sizeof(value[0])));
 	if (len == 0)
 	{
-		return kVp9oCudaSyncEvent;
+		return kWebMiereCudaSyncEvent;
 	}
 	if (lstrcmpiW(value, L"context") == 0 ||
 		lstrcmpiW(value, L"ctx") == 0)
 	{
-		return kVp9oCudaSyncContext;
+		return kWebMiereCudaSyncContext;
 	}
 	if (lstrcmpiW(value, L"producer") == 0 ||
 		lstrcmpiW(value, L"producer_stream") == 0)
 	{
-		return kVp9oCudaSyncProducer;
+		return kWebMiereCudaSyncProducer;
 	}
 	if (lstrcmpiW(value, L"same") == 0 ||
 		lstrcmpiW(value, L"same_stream") == 0 ||
 		lstrcmpiW(value, L"samestream") == 0)
 	{
-		return kVp9oCudaSyncSameStream;
+		return kWebMiereCudaSyncSameStream;
 	}
 	if (lstrcmpiW(value, L"event") == 0 ||
 		lstrcmpiW(value, L"cuda_event") == 0)
 	{
-		return kVp9oCudaSyncEvent;
+		return kWebMiereCudaSyncEvent;
 	}
-	return kVp9oCudaSyncEvent;
+	return kWebMiereCudaSyncEvent;
 }
 
 #endif
@@ -173,7 +174,7 @@ static std::string Utf16ToUtf8(const prUTF16Char *src)
 
 
 extern "C" {
-static enum AVPixelFormat Vp9oGetFormat(AVCodecContext *ctx, const enum AVPixelFormat *fmts)
+static enum AVPixelFormat WebMiereGetFormat(AVCodecContext *ctx, const enum AVPixelFormat *fmts)
 {
 	VideoDecoder *self = static_cast<VideoDecoder*>(ctx->opaque);
 
@@ -254,7 +255,7 @@ static bool ValidateFramePlanesForDescriptor(const AVFrame *f, const AVPixFmtDes
 static bool ValidateDecodedFrameForView(const AVFrame *f)
 {
 	if (f == nullptr ||
-		!Vp9oIsValidVideoSize(f->width, f->height) ||
+		!WebMiereIsValidVideoSize(f->width, f->height) ||
 		f->format < 0)
 	{
 		return false;
@@ -262,7 +263,7 @@ static bool ValidateDecodedFrameForView(const AVFrame *f)
 
 	if (f->format == AV_PIX_FMT_CUDA)
 	{
-#if VP9O_ENABLE_NPP
+#if WEBMIERE_ENABLE_NPP
 		return f->hw_frames_ctx != nullptr && f->data[0] != nullptr;
 #else
 		return false;
@@ -285,7 +286,7 @@ static bool ValidateYuv420PFrame(const AVFrame *f)
 {
 	return f != nullptr &&
 		   f->format == AV_PIX_FMT_YUV420P &&
-		   Vp9oIsValidYuv420Size(f->width, f->height) &&
+		   WebMiereIsValidYuv420Size(f->width, f->height) &&
 		   f->data[0] != nullptr &&
 		   f->data[1] != nullptr &&
 		   f->data[2] != nullptr &&
@@ -298,14 +299,14 @@ static bool ValidateNV12Frame(const AVFrame *f)
 {
 	return f != nullptr &&
 		   f->format == AV_PIX_FMT_NV12 &&
-		   Vp9oIsValidYuv420Size(f->width, f->height) &&
+		   WebMiereIsValidYuv420Size(f->width, f->height) &&
 		   f->data[0] != nullptr &&
 		   f->data[1] != nullptr &&
 		   RowBytesCanHold(f->linesize[0], f->width) &&
 		   RowBytesCanHold(f->linesize[1], f->width);
 }
 
-#if VP9O_ENABLE_NPP
+#if WEBMIERE_ENABLE_NPP
 static bool ValidateCudaNV12Frame(const AVFrame *f,
 								  AVHWFramesContext **outFramesCtx,
 								  AVCUDADeviceContext **outCudaDev)
@@ -321,7 +322,7 @@ static bool ValidateCudaNV12Frame(const AVFrame *f,
 
 	if (f == nullptr ||
 		f->format != AV_PIX_FMT_CUDA ||
-		!Vp9oIsValidYuv420Size(f->width, f->height) ||
+		!WebMiereIsValidYuv420Size(f->width, f->height) ||
 		f->data[0] == nullptr ||
 		f->data[1] == nullptr ||
 		f->hw_frames_ctx == nullptr ||
@@ -431,7 +432,7 @@ VideoDecoder::VideoDecoder()
 	, mNppStreamCtx(nullptr)
 	, mNppStream(nullptr)
 	, mCudaSyncMode(
-#if VP9O_ENABLE_NPP
+#if WEBMIERE_ENABLE_NPP
 		static_cast<int>(ReadCudaSyncModeFromEnv())
 #else
 		0
@@ -455,7 +456,7 @@ void VideoDecoder::Close()
 {
 	bool cudaReleaseOk = ReleaseCudaBuffers();
 
-#if VP9O_ENABLE_NPP
+#if WEBMIERE_ENABLE_NPP
 	if (mPinnedStaging != nullptr)
 	{
 		if (cudaFreeHost(mPinnedStaging) == cudaSuccess)
@@ -480,6 +481,15 @@ void VideoDecoder::Close()
 		MarkCudaCleanupFailed();
 	}
 
+	av_packet_free(&mAlphaPacket);
+	av_frame_free(&mAlphaFrame);
+	av_frame_free(&mAlphaReceive);
+	av_frame_free(&mAlphaSwFrame);
+	avcodec_free_context(&mAlphaCodec);
+	av_frame_free(&mColorScratch);
+	mHalfAlpha.reset();
+	mColorDownload = {};
+	mMaskDownload = {};
 	if (mSws)
 	{
 		sws_freeContext(mSws);
@@ -540,7 +550,7 @@ void VideoDecoder::Close()
 bool VideoDecoder::Open(const prUTF16Char *path)
 {
 	mPathUtf8 = Utf16ToUtf8(path);
-#if VP9O_ENABLE_NPP
+#if WEBMIERE_ENABLE_NPP
 	mCudaSyncMode = static_cast<int>(ReadCudaSyncModeFromEnv());
 #endif
 	wchar_t forceCpu[8] = {};
@@ -592,14 +602,15 @@ bool VideoDecoder::OpenInternal(bool allowHw)
 	const bool isVp9 = (st->codecpar->codec_id == AV_CODEC_ID_VP9);
 	const bool isAv1 = (st->codecpar->codec_id == AV_CODEC_ID_AV1);
 	const bool isSupportedVideo = isVp9 || isAv1;
-	if (!isSupportedVideo)
+	const bool hasAlpha = WebMiereHasAlphaMode(st);
+	if (!isSupportedVideo || (hasAlpha && !isVp9))
 	{
 		Close();
 		return false;
 	}
 	{
 		const AVCodecParameters *par = st->codecpar;
-		if (!Vp9oIsValidVideoSize(par->width, par->height))
+		if (!WebMiereIsValidVideoSize(par->width, par->height))
 		{
 			Close();
 			return false;
@@ -609,14 +620,14 @@ bool VideoDecoder::OpenInternal(bool allowHw)
 			(par->format == AV_PIX_FMT_NONE || pd == nullptr ||
 			 (pd->flags & AV_PIX_FMT_FLAG_HWACCEL) != 0 ||
 			 (pd->flags & AV_PIX_FMT_FLAG_RGB) != 0 ||
-			 (pd->flags & AV_PIX_FMT_FLAG_ALPHA) != 0 ||
+			 ((pd->flags & AV_PIX_FMT_FLAG_ALPHA) != 0 && !(hasAlpha && par->format == AV_PIX_FMT_YUVA420P)) ||
 			 pd->comp[0].depth != 8 ||
 			 pd->log2_chroma_w != 1 || pd->log2_chroma_h != 1))
 		{
 			Close();
 			return false;
 		}
-		if (isSupportedVideo && !Vp9oIsStrictBt709(par))
+		if (isSupportedVideo && !WebMiereIsStrictBt709(par))
 		{
 			Close();
 			return false;
@@ -661,9 +672,10 @@ bool VideoDecoder::OpenInternal(bool allowHw)
 	}
 
 
-	auto tryOpenCodec = [&](bool useHw) -> bool
+	auto openCodec = [&](AVCodecContext *&ctx, bool useHw) -> bool
 	{
-		const AVCodec *attemptDec = defaultDec;
+		const AVCodec *attemptDec = hasAlpha ? avcodec_find_decoder_by_name("vp9") : defaultDec;
+		if (!attemptDec) return false;
 		if (isAv1)
 		{
 			attemptDec = avcodec_find_decoder_by_name(useHw ? "av1" : "libdav1d");
@@ -672,21 +684,23 @@ bool VideoDecoder::OpenInternal(bool allowHw)
 				return false;
 			}
 		}
-		if (mCodecCtx)
+		if (ctx)
 		{
-			avcodec_free_context(&mCodecCtx);
+			avcodec_free_context(&ctx);
 		}
-		mCodecCtx = avcodec_alloc_context3(attemptDec);
-		if (mCodecCtx == nullptr)
-		{
-			return false;
-		}
-		if (avcodec_parameters_to_context(mCodecCtx, st->codecpar) < 0)
+		ctx = avcodec_alloc_context3(attemptDec);
+		if (ctx == nullptr)
 		{
 			return false;
 		}
-		mCodecCtx->thread_count = 0;
-		mCodecCtx->thread_type  = FF_THREAD_FRAME | FF_THREAD_SLICE;
+		if (avcodec_parameters_to_context(ctx, st->codecpar) < 0)
+		{
+			return false;
+		}
+		// Each VP9 block supplies the color and mask for the same presentation time.
+		// Disable frame-thread delay so both decoders expose that pair together.
+		ctx->thread_count = hasAlpha ? 1 : 0;
+		ctx->thread_type  = FF_THREAD_FRAME | FF_THREAD_SLICE;
 
 		if (useHw)
 		{
@@ -696,9 +710,9 @@ bool VideoDecoder::OpenInternal(bool allowHw)
 				mUseHw = false;
 				return false;
 			}
-			mCodecCtx->hw_device_ctx = hwRef;
-			mCodecCtx->opaque        = this;
-			mCodecCtx->get_format    = Vp9oGetFormat;
+			ctx->hw_device_ctx = hwRef;
+			ctx->opaque        = this;
+			ctx->get_format    = WebMiereGetFormat;
 			mUseHw = true;
 		}
 		else
@@ -706,7 +720,12 @@ bool VideoDecoder::OpenInternal(bool allowHw)
 			mUseHw = false;
 		}
 
-		return avcodec_open2(mCodecCtx, attemptDec, nullptr) == 0;
+		return avcodec_open2(ctx, attemptDec, nullptr) == 0;
+	};
+
+	auto tryOpenCodec = [&](bool useHw) -> bool
+	{
+		return openCodec(mCodecCtx, useHw) && (!hasAlpha || openCodec(mAlphaCodec, useHw));
 	};
 
 	bool opened = false;
@@ -725,6 +744,18 @@ bool VideoDecoder::OpenInternal(bool allowHw)
 	}
 
 
+	if (hasAlpha)
+	{
+		mAlphaFrame = av_frame_alloc();
+		mAlphaReceive = av_frame_alloc();
+		mAlphaSwFrame = av_frame_alloc();
+		mAlphaPacket = av_packet_alloc();
+		if (!mAlphaFrame || !mAlphaReceive || !mAlphaSwFrame || !mAlphaPacket)
+		{
+			Close();
+			return false;
+		}
+	}
 	mFrame         = av_frame_alloc();
 	mReceiveFrame  = av_frame_alloc();
 	mSwFrame       = av_frame_alloc();
@@ -817,6 +848,13 @@ bool VideoDecoder::SeekBeforeFrame(int64_t targetFrame)
 		}
 
 		avcodec_flush_buffers(mCodecCtx);
+		if (mAlphaCodec)
+		{
+			avcodec_flush_buffers(mAlphaCodec);
+			av_frame_unref(mAlphaFrame);
+			av_frame_unref(mAlphaReceive);
+			av_packet_unref(mAlphaPacket);
+		}
 		if (mHasPendingPacket)
 		{
 			av_packet_unref(mPendingPacket);
@@ -826,6 +864,7 @@ bool VideoDecoder::SeekBeforeFrame(int64_t targetFrame)
 		mCurrentFrame	= -1;
 		mEofDrained		= false;
 		mLastReadError = 0;
+		mAlphaDecodeError = false;
 		mFlushSent		= false;
 
 		if (!DecodeNext())
@@ -854,8 +893,100 @@ bool VideoDecoder::SeekBeforeFrame(int64_t targetFrame)
 }
 
 
+
+bool VideoDecoder::DecodeNextWithAlpha()
+{
+	const int result = ReadAlphaFramePair();
+	if (result == AVERROR_EOF)
+	{
+		mEofDrained = true;
+	}
+	else if (result < 0)
+	{
+		// The two decoders may have consumed different inputs. Seek both on retry.
+		mAlphaDecodeError = !HadReadError();
+		mHasFrame = false;
+	}
+	return result == 0;
+}
+
+int VideoDecoder::ReadAlphaFramePair()
+{
+	for (;;)
+	{
+		const int color = avcodec_receive_frame(mCodecCtx, mReceiveFrame);
+		const int alpha = avcodec_receive_frame(mAlphaCodec, mAlphaReceive);
+		if (color != alpha) return AVERROR_INVALIDDATA;
+		if (color == 0)
+		{
+			if (mReceiveFrame->pts == AV_NOPTS_VALUE || mReceiveFrame->pts != mAlphaReceive->pts ||
+				mReceiveFrame->width != mAlphaReceive->width || mReceiveFrame->height != mAlphaReceive->height)
+			{
+				return AVERROR_INVALIDDATA;
+			}
+			mCurrentFrame = FrameIndexOf(mReceiveFrame);
+			av_frame_unref(mFrame);
+			av_frame_move_ref(mFrame, mReceiveFrame);
+			av_frame_unref(mAlphaFrame);
+			av_frame_move_ref(mAlphaFrame, mAlphaReceive);
+			mHasFrame = true;
+			return 0;
+		}
+		if (color != AVERROR(EAGAIN)) return color;
+		if (mFlushSent) return AVERROR_INVALIDDATA;
+
+		int read;
+		do
+		{
+			av_packet_unref(mPacket);
+			read = av_read_frame(mFmt, mPacket);
+		} while (read >= 0 && mPacket->stream_index != mVideoStream);
+		if (read == AVERROR_EOF && mFmt->pb && mFmt->pb->error < 0 && mFmt->pb->error != AVERROR_EOF)
+			read = mFmt->pb->error;
+		if (read == AVERROR_EOF)
+		{
+			int ret = avcodec_send_packet(mCodecCtx, nullptr);
+			if (ret < 0) return ret;
+			ret = avcodec_send_packet(mAlphaCodec, nullptr);
+			if (ret < 0) return ret;
+			mFlushSent = true;
+			continue;
+		}
+		if (read < 0)
+		{
+			mLastReadError = read;
+			return read;
+		}
+
+		// The demuxer prefixes Matroska BlockAdditional with its 64-bit big-endian ID.
+		const uint8_t alphaId[8] = {0, 0, 0, 0, 0, 0, 0, 1};
+		av_packet_unref(mAlphaPacket);
+		for (int i = 0; i < mPacket->side_data_elems; ++i)
+		{
+			const AVPacketSideData &side = mPacket->side_data[i];
+			if (side.type != AV_PKT_DATA_MATROSKA_BLOCKADDITIONAL || side.size < sizeof(alphaId) ||
+				std::memcmp(side.data, alphaId, sizeof(alphaId)) != 0) continue;
+
+			const size_t size = side.size - sizeof(alphaId);
+			if (size == 0 || size > std::numeric_limits<int>::max()) return AVERROR_INVALIDDATA;
+			int ret = av_new_packet(mAlphaPacket, static_cast<int>(size));
+			if (ret < 0) return ret;
+			std::memcpy(mAlphaPacket->data, side.data + sizeof(alphaId), size);
+			mAlphaPacket->pts = mPacket->pts;
+			mAlphaPacket->dts = mPacket->dts;
+			mAlphaPacket->duration = mPacket->duration;
+			ret = avcodec_send_packet(mAlphaCodec, mAlphaPacket);
+			if (ret < 0) return ret;
+			break;
+		}
+		const int ret = avcodec_send_packet(mCodecCtx, mPacket);
+		if (ret < 0) return ret;
+	}
+}
+
 bool VideoDecoder::DecodeNext()
 {
+	if (mAlphaCodec) return DecodeNextWithAlpha();
 	for (;;)
 	{
 		int ret = avcodec_receive_frame(mCodecCtx, mReceiveFrame);
@@ -937,6 +1068,7 @@ bool VideoDecoder::DecodeFrameToBGRA(int64_t targetFrame,
 {
 	std::lock_guard<std::mutex> lock(mMutex);
 	mLastReadError = 0;
+	mAlphaDecodeError = false;
 
 	if (!mOpened || dstBGRA == nullptr)
 	{
@@ -966,7 +1098,7 @@ bool VideoDecoder::DecodeFrameToBGRA(int64_t targetFrame,
 
 bool VideoDecoder::DecodeToTargetAndConvert(int64_t targetFrame, uint8_t *dst, int rowBytes, int w, int h)
 {
-	Vp9oDecodedFrameView view;
+	WebMiereDecodedFrameView view;
 	if (!DecodeFrameToSurface(targetFrame, &view))
 	{
 		return false;
@@ -975,7 +1107,7 @@ bool VideoDecoder::DecodeToTargetAndConvert(int64_t targetFrame, uint8_t *dst, i
 }
 
 
-bool VideoDecoder::DecodeFrameToSurface(int64_t targetFrame, Vp9oDecodedFrameView *outView)
+bool VideoDecoder::DecodeFrameToSurface(int64_t targetFrame, WebMiereDecodedFrameView *outView)
 {
 	mFallbackReason = nullptr;
 
@@ -1049,7 +1181,7 @@ bool VideoDecoder::DecodeFrameToSurface(int64_t targetFrame, Vp9oDecodedFrameVie
 }
 
 
-bool VideoDecoder::ConvertSurfaceToBGRA(const Vp9oDecodedFrameView &view, uint8_t *dst, int dstRowBytes, int dstW, int dstH)
+bool VideoDecoder::ConvertSurfaceToBGRA(const WebMiereDecodedFrameView &view, uint8_t *dst, int dstRowBytes, int dstW, int dstH)
 {
 
 	const AVFrame *src = view.frame;
@@ -1058,6 +1190,7 @@ bool VideoDecoder::ConvertSurfaceToBGRA(const Vp9oDecodedFrameView &view, uint8_
 		return false;
 	}
 
+	bool useHalfBands = false;
 	if (view.isCuda)
 	{
 		if (mCudaCleanupFailed || mDisableHw)
@@ -1078,9 +1211,24 @@ bool VideoDecoder::ConvertSurfaceToBGRA(const Vp9oDecodedFrameView &view, uint8_
 			return true;
 		}
 
+#if WEBMIERE_ENABLE_NPP
+		// Keep native, opaque and arbitrary-size requests on their original paths.
+		useHalfBands = mAlphaCodec && WebMiereIsValidVideoSize(dstW, dstH) &&
+			src->width == 2 * dstW && src->height == 2 * dstH &&
+			static_cast<int64_t>(src->width) * src->height >= 1024 * 1024 && dstH >= 16 &&
+			dst && RowBytesCanHold(dstRowBytes, dstW * 4) &&
+			ValidateCudaNV12Frame(src, nullptr, nullptr) &&
+			ValidateCudaNV12Frame(mAlphaFrame, nullptr, nullptr) &&
+			mAlphaFrame->width == src->width && mAlphaFrame->height == src->height;
+#endif
 
-		av_frame_unref(mSwFrame);
-		int tr = av_hwframe_transfer_data(mSwFrame, src, 0);
+		int tr;
+		if (mAlphaCodec) {
+			tr = mColorDownload.Transfer(mSwFrame, src);
+		} else {
+			av_frame_unref(mSwFrame);
+			tr = av_hwframe_transfer_data(mSwFrame, src, 0);
+		}
 		if (tr < 0)
 		{
 						mFallbackReason = "hwdownload";
@@ -1100,7 +1248,7 @@ bool VideoDecoder::ConvertSurfaceToBGRA(const Vp9oDecodedFrameView &view, uint8_
 		return false;
 	}
 
-	return ConvertToBGRA(src, dst, dstRowBytes, dstW, dstH);
+	return ConvertToBGRA(src, dst, dstRowBytes, dstW, dstH, useHalfBands);
 }
 
 
@@ -1113,7 +1261,7 @@ bool VideoDecoder::DecodeFrameToYUV420P(int64_t targetFrame,
 	std::lock_guard<std::mutex> lock(mMutex);
 	mLastReadError = 0;
 
-	if (!mOpened || dstY == nullptr || dstU == nullptr || dstV == nullptr)
+	if (mAlphaCodec || !mOpened || dstY == nullptr || dstU == nullptr || dstV == nullptr)
 	{
 		return false;
 	}
@@ -1122,7 +1270,7 @@ bool VideoDecoder::DecodeFrameToYUV420P(int64_t targetFrame,
 		targetFrame = 0;
 	}
 
-	Vp9oDecodedFrameView view;
+	WebMiereDecodedFrameView view;
 	const bool decoded = DecodeFrameToSurface(targetFrame, &view);
 	if (decoded &&
 		ConvertSurfaceToYUV420P(view, dstY, dstYRowBytes, dstU, dstURowBytes,
@@ -1143,7 +1291,7 @@ bool VideoDecoder::DecodeFrameToYUV420P(int64_t targetFrame,
 }
 
 
-bool VideoDecoder::ConvertSurfaceToYUV420P(const Vp9oDecodedFrameView &view,
+bool VideoDecoder::ConvertSurfaceToYUV420P(const WebMiereDecodedFrameView &view,
 										   uint8_t *dstY, int dstYRowBytes,
 										   uint8_t *dstU, int dstURowBytes,
 										   uint8_t *dstV, int dstVRowBytes,
@@ -1155,7 +1303,7 @@ bool VideoDecoder::ConvertSurfaceToYUV420P(const Vp9oDecodedFrameView &view,
 		return false;
 	}
 
-	if (!Vp9oIsValidYuv420Size(dstW, dstH))
+	if (!WebMiereIsValidYuv420Size(dstW, dstH))
 	{
 				return false;
 	}
@@ -1168,7 +1316,7 @@ bool VideoDecoder::ConvertSurfaceToYUV420P(const Vp9oDecodedFrameView &view,
 	}
 
 
-#if VP9O_ENABLE_CUDA_YUV420P_DIRECT
+#if WEBMIERE_ENABLE_CUDA_YUV420P_DIRECT
 	if (view.isCuda)
 	{
 				if (ConvertCudaNV12ToYUV420P(view, dstY, dstYRowBytes, dstU, dstURowBytes,
@@ -1216,7 +1364,7 @@ bool VideoDecoder::ConvertSurfaceToYUV420P(const Vp9oDecodedFrameView &view,
 	const int srcFmt = src->format;
 	const int srcW   = src->width;
 	const int srcH   = src->height;
-	if (!Vp9oIsValidVideoSize(srcW, srcH))
+	if (!WebMiereIsValidVideoSize(srcW, srcH))
 	{
 		return false;
 	}
@@ -1281,9 +1429,9 @@ bool VideoDecoder::ConvertSurfaceToYUV420P(const Vp9oDecodedFrameView &view,
 }
 
 
-bool VideoDecoder::ConvertToBGRA(const AVFrame *f, uint8_t *dst, int dstRowBytes, int dstW, int dstH)
+bool VideoDecoder::ConvertToBGRA(const AVFrame *f, uint8_t *dst, int dstRowBytes, int dstW, int dstH, bool useHalfBands)
 {
-	if (f == nullptr || dst == nullptr || !Vp9oIsValidVideoSize(dstW, dstH))
+	if (f == nullptr || dst == nullptr || !WebMiereIsValidVideoSize(dstW, dstH))
 	{
 		return false;
 	}
@@ -1302,6 +1450,38 @@ bool VideoDecoder::ConvertToBGRA(const AVFrame *f, uint8_t *dst, int dstRowBytes
 		return false;
 	}
 
+	const bool resizeAlpha = mAlphaCodec && (dstW != f->width || dstH != f->height);
+	uint8_t *firstRow = dst + static_cast<ptrdiff_t>(dstH - 1) * dstRowBytes;
+	if (!resizeAlpha && !ConvertColorToBGRA(f, firstRow, -dstRowBytes, dstW, dstH)) return false;
+	if (!mAlphaCodec) return true;
+
+	const AVFrame *mask = SoftwareAlphaFrame();
+	if (!mask) return false;
+	if (resizeAlpha)
+	{
+		if (useHalfBands) {
+			if (!mHalfAlpha) mHalfAlpha = std::make_unique<HalfAlphaConverter>();
+			return mHalfAlpha->Convert(f, mask, mColorScratch, dst, dstRowBytes, mSwsFlags, mFallbackReason);
+		}
+		if (!EnsureAlphaBgraBuffer(mColorScratch, f->width, f->height)) return false;
+		if (!ConvertColorToBGRA(f, mColorScratch->data[0], mColorScratch->linesize[0], f->width, f->height))
+			return false;
+		webmiere::alpha_resize::Resize(mColorScratch->data[0], mColorScratch->linesize[0],
+			mask->data[0], mask->linesize[0], f->width, f->height, dst, dstRowBytes, dstW, dstH);
+		return true;
+	}
+
+	for (int y = 0; y < dstH; ++y)
+	{
+		uint8_t *row = firstRow - static_cast<ptrdiff_t>(y) * dstRowBytes;
+		const uint8_t *alpha = mask->data[0] + static_cast<ptrdiff_t>(y) * mask->linesize[0];
+		for (int x = 0; x < dstW; ++x) row[4 * x + 3] = alpha[x];
+	}
+	return true;
+}
+
+bool VideoDecoder::ConvertColorToBGRA(const AVFrame *f, uint8_t *firstRow, int stride, int dstW, int dstH)
+{
 	const int srcFmt = f->format;
 	const int srcW   = f->width;
 	const int srcH   = f->height;
@@ -1333,8 +1513,8 @@ bool VideoDecoder::ConvertToBGRA(const AVFrame *f, uint8_t *dst, int dstRowBytes
 			}
 
 
-	uint8_t *dstData[4]     = { dst + static_cast<ptrdiff_t>(dstH - 1) * dstRowBytes, nullptr, nullptr, nullptr };
-	int      dstLinesize[4] = { -dstRowBytes, 0, 0, 0 };
+	uint8_t *dstData[4]     = { firstRow, nullptr, nullptr, nullptr };
+	int      dstLinesize[4] = { stride, 0, 0, 0 };
 
 	int scaledH = sws_scale(mSws, f->data, f->linesize, 0, srcH, dstData, dstLinesize);
 	if (!(scaledH == dstH))
@@ -1347,9 +1527,28 @@ bool VideoDecoder::ConvertToBGRA(const AVFrame *f, uint8_t *dst, int dstRowBytes
 }
 
 
+
+const AVFrame *VideoDecoder::SoftwareAlphaFrame()
+{
+	const AVFrame *mask = mAlphaFrame;
+	if (mask->format == AV_PIX_FMT_CUDA)
+	{
+		if (mMaskDownload.Transfer(mAlphaSwFrame, mask) < 0)
+		{
+			mFallbackReason = "alpha-hwdownload";
+			return nullptr;
+		}
+		mask = mAlphaSwFrame;
+	}
+	if ((mask->format != AV_PIX_FMT_YUV420P && mask->format != AV_PIX_FMT_NV12) ||
+		!mask->data[0] || !RowBytesCanHold(mask->linesize[0], mask->width)) return nullptr;
+
+	return mask;
+}
+
 bool VideoDecoder::BuildNppStreamContext(void *streamVoid) noexcept
 {
-#if VP9O_ENABLE_NPP
+#if WEBMIERE_ENABLE_NPP
 	if (mNppStreamCtx == nullptr)
 	{
 		mNppStreamCtx = new (std::nothrow) NppStreamContext();
@@ -1379,7 +1578,7 @@ bool VideoDecoder::BuildNppStreamContext(void *streamVoid) noexcept
 
 bool VideoDecoder::EnsureCudaConsumerStream(void **outStream) noexcept
 {
-#if VP9O_ENABLE_NPP
+#if WEBMIERE_ENABLE_NPP
 	if (outStream == nullptr)
 	{
 		return false;
@@ -1404,7 +1603,7 @@ bool VideoDecoder::EnsureCudaConsumerStream(void **outStream) noexcept
 
 bool VideoDecoder::EnsureNppStreamContext(void *streamVoid) noexcept
 {
-#if VP9O_ENABLE_NPP
+#if WEBMIERE_ENABLE_NPP
 	if (mNppDevReady && mNppStream == streamVoid && mNppStreamCtx != nullptr)
 	{
 		return true;
@@ -1451,7 +1650,7 @@ bool VideoDecoder::EnsureNppStreamContext(void *streamVoid) noexcept
 
 bool VideoDecoder::DestroyCudaEventStrict() noexcept
 {
-#if VP9O_ENABLE_NPP
+#if WEBMIERE_ENABLE_NPP
 	bool eventOk = true;
 	if (mCudaProducerEvent != nullptr)
 	{
@@ -1479,7 +1678,7 @@ bool VideoDecoder::PrepareCudaSurfaceRead(AVCUDADeviceContext *cudaDev,
 										  void **outStream,
 										  bool *outQueuedWait) noexcept
 {
-#if VP9O_ENABLE_NPP
+#if WEBMIERE_ENABLE_NPP
 	if (outStream == nullptr || cudaDev == nullptr || cudaDev->cuda_ctx == nullptr)
 	{
 		return false;
@@ -1490,15 +1689,15 @@ bool VideoDecoder::PrepareCudaSurfaceRead(AVCUDADeviceContext *cudaDev,
 	}
 
 	CUstream producerStream = cudaDev->stream;
-	Vp9oCudaSyncMode mode = static_cast<Vp9oCudaSyncMode>(mCudaSyncMode);
+	WebMiereCudaSyncMode mode = static_cast<WebMiereCudaSyncMode>(mCudaSyncMode);
 
 	void *consumerStream = nullptr;
-	if (mode == kVp9oCudaSyncSameStream)
+	if (mode == kWebMiereCudaSyncSameStream)
 	{
 		consumerStream = reinterpret_cast<void*>(producerStream);
 		if (!EnsureNppStreamContext(consumerStream))
 		{
-			mode = kVp9oCudaSyncProducer;
+			mode = kWebMiereCudaSyncProducer;
 		}
 		else
 		{
@@ -1518,7 +1717,7 @@ bool VideoDecoder::PrepareCudaSurfaceRead(AVCUDADeviceContext *cudaDev,
 
 	CUstream consumerCuStream = reinterpret_cast<CUstream>(consumerStream);
 
-	if (mode == kVp9oCudaSyncEvent)
+	if (mode == kWebMiereCudaSyncEvent)
 	{
 		if (mCudaProducerEventCtx != reinterpret_cast<void*>(cudaDev->cuda_ctx))
 		{
@@ -1551,20 +1750,20 @@ bool VideoDecoder::PrepareCudaSurfaceRead(AVCUDADeviceContext *cudaDev,
 			}
 		}
 
-		mode = kVp9oCudaSyncProducer;
+		mode = kWebMiereCudaSyncProducer;
 	}
 
-	if (mode == kVp9oCudaSyncProducer)
+	if (mode == kWebMiereCudaSyncProducer)
 	{
 		if (cuStreamSynchronize(producerStream) == CUDA_SUCCESS)
 		{
 			*outStream = consumerStream;
 			return true;
 		}
-		mode = kVp9oCudaSyncContext;
+		mode = kWebMiereCudaSyncContext;
 	}
 
-	if (mode == kVp9oCudaSyncContext)
+	if (mode == kWebMiereCudaSyncContext)
 	{
 		if (cuCtxSynchronize() == CUDA_SUCCESS)
 		{
@@ -1585,7 +1784,7 @@ bool VideoDecoder::PrepareCudaSurfaceRead(AVCUDADeviceContext *cudaDev,
 
 bool VideoDecoder::EnsurePinned(size_t bytes)
 {
-#if VP9O_ENABLE_NPP
+#if WEBMIERE_ENABLE_NPP
 	if (mCudaCleanupFailed)
 	{
 		return false;
@@ -1621,7 +1820,7 @@ bool VideoDecoder::EnsurePinned(size_t bytes)
 
 bool VideoDecoder::ConvertToBGRA_CUDA(const AVFrame *f, uint8_t *dst, int dstRowBytes, int dstW, int dstH)
 {
-#if VP9O_ENABLE_NPP
+#if WEBMIERE_ENABLE_NPP
 	if (mCudaCleanupFailed || mDisableHw)
 	{
 		mFallbackReason = "cuda-cleanup";
@@ -1632,7 +1831,7 @@ bool VideoDecoder::ConvertToBGRA_CUDA(const AVFrame *f, uint8_t *dst, int dstRow
 		return false;
 	}
 
-	if (!Vp9oIsValidVideoSize(dstW, dstH) ||
+	if (!WebMiereIsValidVideoSize(dstW, dstH) ||
 		f->width != dstW || f->height != dstH)
 	{
 		return false;
@@ -1650,6 +1849,12 @@ bool VideoDecoder::ConvertToBGRA_CUDA(const AVFrame *f, uint8_t *dst, int dstRow
 	AVHWFramesContext    *fctx  = nullptr;
 	AVCUDADeviceContext  *cudev = nullptr;
 	if (!ValidateCudaNV12Frame(f, &fctx, &cudev))
+	{
+		return false;
+	}
+	AVCUDADeviceContext *alphaDevice = nullptr;
+	if (mAlphaCodec && (!ValidateCudaNV12Frame(mAlphaFrame, nullptr, &alphaDevice) ||
+		alphaDevice != cudev || mAlphaFrame->linesize[0] < dstW))
 	{
 		return false;
 	}
@@ -1731,6 +1936,12 @@ bool VideoDecoder::ConvertToBGRA_CUDA(const AVFrame *f, uint8_t *dst, int dstRow
 			break;
 		}
 
+		if (mAlphaCodec && nppiCopy_8u_C1C4R_Ctx(mAlphaFrame->data[0], mAlphaFrame->linesize[0],
+				mCudaBgra + 3, static_cast<int>(mCudaBgraPitch), roi, nppCtx) != NPP_SUCCESS)
+		{
+			break;
+		}
+
 		if (nppiMirror_8u_C4R_Ctx(mCudaBgra, static_cast<int>(mCudaBgraPitch), mCudaFlip, static_cast<int>(mCudaFlipPitch), roi, NPP_HORIZONTAL_AXIS, nppCtx) != NPP_SUCCESS)
 		{
 			break;
@@ -1802,13 +2013,13 @@ bool VideoDecoder::ConvertToBGRA_CUDA(const AVFrame *f, uint8_t *dst, int dstRow
 }
 
 
-bool VideoDecoder::ConvertCudaNV12ToYUV420P(const Vp9oDecodedFrameView &view,
+bool VideoDecoder::ConvertCudaNV12ToYUV420P(const WebMiereDecodedFrameView &view,
 											uint8_t *dstY, int dstYRowBytes,
 											uint8_t *dstU, int dstURowBytes,
 											uint8_t *dstV, int dstVRowBytes,
 											int dstW, int dstH)
 {
-#if VP9O_ENABLE_NPP
+#if WEBMIERE_ENABLE_NPP
 	const AVFrame *f = view.frame;
 
 	if (mCudaCleanupFailed || mDisableHw)
@@ -1820,7 +2031,7 @@ bool VideoDecoder::ConvertCudaNV12ToYUV420P(const Vp9oDecodedFrameView &view,
 	{
 		return false;
 	}
-	if (!Vp9oIsValidYuv420Size(dstW, dstH))
+	if (!WebMiereIsValidYuv420Size(dstW, dstH))
 	{
 		return false;
 	}
@@ -2023,7 +2234,7 @@ void VideoDecoder::MarkCudaCleanupFailed() noexcept
 
 bool VideoDecoder::FreeCudaBuffersStrict()
 {
-#if VP9O_ENABLE_NPP
+#if WEBMIERE_ENABLE_NPP
 	bool freeOk = true;
 	if (mCudaBgr)
 	{
@@ -2058,7 +2269,7 @@ bool VideoDecoder::FreeCudaBuffersStrict()
 
 bool VideoDecoder::FreeCudaYuvBuffersStrict()
 {
-#if VP9O_ENABLE_NPP
+#if WEBMIERE_ENABLE_NPP
 	bool freeOk = true;
 	if (mCudaYuvY)
 	{
@@ -2092,7 +2303,7 @@ bool VideoDecoder::FreeCudaYuvBuffersStrict()
 
 bool VideoDecoder::DestroyStreamStrict()
 {
-#if VP9O_ENABLE_NPP
+#if WEBMIERE_ENABLE_NPP
 	bool streamOk = true;
 	if (mCudaStream)
 	{
@@ -2110,7 +2321,7 @@ bool VideoDecoder::DestroyStreamStrict()
 
 bool VideoDecoder::ReleaseCudaBuffersInCtx(void *ctxVoid)
 {
-#if VP9O_ENABLE_NPP
+#if WEBMIERE_ENABLE_NPP
 	if (mCudaBgr == nullptr && mCudaBgra == nullptr && mCudaFlip == nullptr &&
 		mCudaYuvY == nullptr && mCudaYuvU == nullptr && mCudaYuvV == nullptr &&
 		mCudaStream == nullptr && mCudaProducerEvent == nullptr)

@@ -12,6 +12,7 @@
 #include "VideoDecoder.h"
 #include "AudioDecoder.h"
 #include "WebMiereLimits.h"
+#include "PrSDKAppInfoSuite.h"
 #include "PrSDKImporterFileManagerSuite.h"
 
 #include <bcrypt.h>
@@ -26,7 +27,7 @@
 #include <cstdio>
 
 
-struct Vp9oInstanceLocks
+struct WebMiereInstanceLocks
 {
 	std::recursive_mutex video;
 	std::recursive_mutex audio;
@@ -34,22 +35,22 @@ struct Vp9oInstanceLocks
 
 
 namespace {
-class Vp9oScopedLock
+class WebMiereScopedLock
 {
 public:
-	explicit Vp9oScopedLock(std::recursive_mutex *m) : mMutex(m) { if (mMutex) mMutex->lock(); }
-	~Vp9oScopedLock() { if (mMutex) mMutex->unlock(); }
-	Vp9oScopedLock(const Vp9oScopedLock&) = delete;
-	Vp9oScopedLock& operator=(const Vp9oScopedLock&) = delete;
+	explicit WebMiereScopedLock(std::recursive_mutex *m) : mMutex(m) { if (mMutex) mMutex->lock(); }
+	~WebMiereScopedLock() { if (mMutex) mMutex->unlock(); }
+	WebMiereScopedLock(const WebMiereScopedLock&) = delete;
+	WebMiereScopedLock& operator=(const WebMiereScopedLock&) = delete;
 private:
 	std::recursive_mutex *mMutex;
 };
 
 
-class Vp9oHandleLock
+class WebMiereHandleLock
 {
 public:
-	Vp9oHandleLock(imStdParms *stdParms, ImporterLocalRecH h)
+	WebMiereHandleLock(imStdParms *stdParms, ImporterLocalRecH h)
 		: mMem((stdParms != NULL && stdParms->piSuites != NULL) ? stdParms->piSuites->memFuncs : NULL)
 		, mHandle(h)
 		, mData(NULL)
@@ -63,13 +64,13 @@ public:
 		}
 	}
 
-	~Vp9oHandleLock()
+	~WebMiereHandleLock()
 	{
 		Unlock();
 	}
 
-	Vp9oHandleLock(const Vp9oHandleLock&) = delete;
-	Vp9oHandleLock& operator=(const Vp9oHandleLock&) = delete;
+	WebMiereHandleLock(const WebMiereHandleLock&) = delete;
+	WebMiereHandleLock& operator=(const WebMiereHandleLock&) = delete;
 
 	ImporterLocalRecP Get() const
 	{
@@ -109,62 +110,62 @@ private:
 
 
 static std::recursive_mutex *
-Vp9oVideoLock(ImporterLocalRecH h)
+WebMiereVideoLock(ImporterLocalRecH h)
 {
 	if (h != NULL && *h != NULL && (*h)->locks != NULL)
 	{
-		return &reinterpret_cast<Vp9oInstanceLocks*>((*h)->locks)->video;
+		return &reinterpret_cast<WebMiereInstanceLocks*>((*h)->locks)->video;
 	}
 	return NULL;
 }
 
 
 static std::recursive_mutex *
-Vp9oVideoLock(ImporterLocalRecP p)
+WebMiereVideoLock(ImporterLocalRecP p)
 {
 	if (p != NULL && p->locks != NULL)
 	{
-		return &reinterpret_cast<Vp9oInstanceLocks*>(p->locks)->video;
+		return &reinterpret_cast<WebMiereInstanceLocks*>(p->locks)->video;
 	}
 	return NULL;
 }
 
 
 static std::recursive_mutex *
-Vp9oAudioLock(ImporterLocalRecH h)
+WebMiereAudioLock(ImporterLocalRecH h)
 {
 	if (h != NULL && *h != NULL && (*h)->locks != NULL)
 	{
-		return &reinterpret_cast<Vp9oInstanceLocks*>((*h)->locks)->audio;
+		return &reinterpret_cast<WebMiereInstanceLocks*>((*h)->locks)->audio;
 	}
 	return NULL;
 }
 
 
 static std::recursive_mutex *
-Vp9oAudioLock(ImporterLocalRecP p)
+WebMiereAudioLock(ImporterLocalRecP p)
 {
 	if (p != NULL && p->locks != NULL)
 	{
-		return &reinterpret_cast<Vp9oInstanceLocks*>(p->locks)->audio;
+		return &reinterpret_cast<WebMiereInstanceLocks*>(p->locks)->audio;
 	}
 	return NULL;
 }
 
 
 static void
-Vp9oFreeLocks(ImporterLocalRecH h)
+WebMiereFreeLocks(ImporterLocalRecH h)
 {
 	if (h != NULL && *h != NULL && (*h)->locks != NULL)
 	{
-		delete reinterpret_cast<Vp9oInstanceLocks*>((*h)->locks);
+		delete reinterpret_cast<WebMiereInstanceLocks*>((*h)->locks);
 		(*h)->locks = NULL;
 	}
 }
 
 
 static bool
-Vp9oEnsureLocks(ImporterLocalRecP p)
+WebMiereEnsureLocks(ImporterLocalRecP p)
 {
 	if (p == NULL)
 	{
@@ -172,14 +173,14 @@ Vp9oEnsureLocks(ImporterLocalRecP p)
 	}
 	if (p->locks == NULL)
 	{
-		p->locks = new (std::nothrow) Vp9oInstanceLocks();
+		p->locks = new (std::nothrow) WebMiereInstanceLocks();
 	}
 	return p->locks != NULL;
 }
 
 
 static bool
-Vp9oHasMemoryFuncs(imStdParms *stdParms)
+WebMiereHasMemoryFuncs(imStdParms *stdParms)
 {
 	return stdParms != NULL &&
 		   stdParms->piSuites != NULL &&
@@ -188,21 +189,21 @@ Vp9oHasMemoryFuncs(imStdParms *stdParms)
 
 
 static bool
-Vp9oHasRequiredSuites(imStdParms *stdParms)
+WebMiereHasRequiredSuites(imStdParms *stdParms)
 {
-	return Vp9oHasMemoryFuncs(stdParms) &&
+	return WebMiereHasMemoryFuncs(stdParms) &&
 		   stdParms->piSuites->utilFuncs != NULL;
 }
 
 
 static bool
-Vp9oSetImporterStreamFileCount(
+WebMiereSetImporterStreamFileCount(
 	imStdParms		*stdParms,
 	csSDK_uint32	importerID,
 	csSDK_int32		streamIndex,
 	csSDK_int32		fileCount)
 {
-	if (!Vp9oHasRequiredSuites(stdParms) || fileCount <= 0)
+	if (!WebMiereHasRequiredSuites(stdParms) || fileCount <= 0)
 	{
 		return false;
 	}
@@ -241,13 +242,13 @@ Vp9oSetImporterStreamFileCount(
 
 
 static void
-Vp9oDisposePrivateDataHandle(imStdParms *stdParms, ImporterLocalRecH ldataH, void **privateData)
+WebMiereDisposePrivateDataHandle(imStdParms *stdParms, ImporterLocalRecH ldataH, void **privateData)
 {
 	if (privateData != NULL)
 	{
 		*privateData = NULL;
 	}
-	if (Vp9oHasMemoryFuncs(stdParms) && ldataH != NULL)
+	if (WebMiereHasMemoryFuncs(stdParms) && ldataH != NULL)
 	{
 		stdParms->piSuites->memFuncs->disposeHandle(reinterpret_cast<char**>(ldataH));
 	}
@@ -255,7 +256,7 @@ Vp9oDisposePrivateDataHandle(imStdParms *stdParms, ImporterLocalRecH ldataH, voi
 
 
 static void
-Vp9oReleaseSuites(ImporterLocalRecP ldata)
+WebMiereReleaseSuites(ImporterLocalRecP ldata)
 {
 	if (ldata == NULL || ldata->BasicSuite == NULL)
 	{
@@ -288,7 +289,7 @@ Vp9oReleaseSuites(ImporterLocalRecP ldata)
 
 
 static bool
-Vp9oComputeFrameRatePrTime(PrTime ticksPerSecond, int frameRateNum, int frameRateDen, PrTime *outPrTime)
+WebMiereComputeFrameRatePrTime(PrTime ticksPerSecond, int frameRateNum, int frameRateDen, PrTime *outPrTime)
 {
 	if (outPrTime == NULL)
 	{
@@ -315,7 +316,7 @@ Vp9oComputeFrameRatePrTime(PrTime ticksPerSecond, int frameRateNum, int frameRat
 }
 
 static PrAudioSample
-Vp9oSaturatingAddAudioSamples(PrAudioSample a, int64_t b)
+WebMiereSaturatingAddAudioSamples(PrAudioSample a, int64_t b)
 {
 	if (b <= 0)
 	{
@@ -331,7 +332,7 @@ Vp9oSaturatingAddAudioSamples(PrAudioSample a, int64_t b)
 
 
 static void
-Vp9oResetFileInfoStreamFields(imFileInfoRec8 *fileInfo8)
+WebMiereResetFileInfoStreamFields(imFileInfoRec8 *fileInfo8)
 {
 	fileInfo8->hasVideo = kPrFalse;
 	fileInfo8->hasAudio = kPrFalse;
@@ -362,7 +363,7 @@ Vp9oResetFileInfoStreamFields(imFileInfoRec8 *fileInfo8)
 
 
 static bool
-Vp9oApplyProbeStreamMapping(
+WebMiereApplyProbeStreamMapping(
 	ImporterLocalRecP		ldata,
 	const MediaProbeInfo	&probe,
 	csSDK_int32				premiereStreamIdx)
@@ -380,6 +381,7 @@ Vp9oApplyProbeStreamMapping(
 
 	ldata->premiereStreamIdx = premiereStreamIdx;
 	ldata->hasVideo = (premiereStreamIdx == 0) ? kPrTrue : kPrFalse;
+	ldata->hasAlpha = ldata->hasVideo && probe.hasAlpha;
 	ldata->hasAudio = (probe.audioStreamCount > 0) ? kPrTrue : kPrFalse;
 	ldata->width = probe.width;
 	ldata->height = probe.height;
@@ -433,19 +435,19 @@ static bool       IsBgraPixelFormat(PrPixelFormat fmt);
 static bool       SelectBgraFallbackFormat(const imFrameFormat *formats, csSDK_int32 numFormats,
 										   bool ppixAvailable,
 										   csSDK_int32 nativeWidth, csSDK_int32 nativeHeight,
-										   Vp9oOutputFormat *out);
+										   WebMiereOutputFormat *out);
 static bool       SelectOutputFormat(const imFrameFormat *formats, csSDK_int32 numFormats,
 									 bool ppixAvailable, bool ppix2Available,
 									 csSDK_int32 nativeWidth, csSDK_int32 nativeHeight,
-									 Vp9oOutputFormat *out);
+									 WebMiereOutputFormat *out);
 static prMALError CreateOutputPPix(ImporterLocalRecP ldata, PPixHand *outFrame,
-								   const Vp9oOutputFormat &fmt,
+								   const WebMiereOutputFormat &fmt,
 								   char **outBuffer, csSDK_int32 *outRowBytes);
 static void       DisposeOutputPPix(ImporterLocalRecP ldata, PPixHand *outFrame);
-#if VP9O_ENABLE_YUV420P_RETURN
+#if WEBMIERE_ENABLE_YUV420P_RETURN
 
 static bool       TryGetSourceVideoYUV420P(ImporterLocalRecP ldata, imSourceVideoRec *sourceVideoRec,
-										   const Vp9oOutputFormat &outFmt, VideoDecoder *decoder,
+										   const WebMiereOutputFormat &outFmt, VideoDecoder *decoder,
 										   int64_t theFrame);
 #endif
 
@@ -465,7 +467,7 @@ ReleaseOpenResources(
 	if (ldata)
 	{
 		{
-			Vp9oScopedLock lock(Vp9oVideoLock(ldata));
+			WebMiereScopedLock lock(WebMiereVideoLock(ldata));
 			if (ldata->decoder)
 			{
 				delete ldata->decoder;
@@ -473,7 +475,7 @@ ReleaseOpenResources(
 			}
 		}
 		{
-			Vp9oScopedLock lock(Vp9oAudioLock(ldata));
+			WebMiereScopedLock lock(WebMiereAudioLock(ldata));
 			if (ldata->audioDecoder)
 			{
 				delete ldata->audioDecoder;
@@ -506,7 +508,7 @@ ReleaseOpenResources(
 
 
 static csSDK_int32
-Vp9oFiletypeForPath(const prUTF16Char *path)
+WebMiereFiletypeForPath(const prUTF16Char *path)
 {
 	if (path == NULL)
 	{
@@ -536,7 +538,7 @@ Vp9oFiletypeForPath(const prUTF16Char *path)
 
 
 static bool
-Vp9oCopyFilePath(
+WebMiereCopyFilePath(
 	prUTF16Char			*dst,
 	size_t				dstCount,
 	const prUTF16Char	*src)
@@ -558,9 +560,9 @@ Vp9oCopyFilePath(
 
 
 namespace {
-constexpr DWORD kVp9oRuntimePathMax = 4096;
+constexpr DWORD kWebMiereRuntimePathMax = 4096;
 
-struct Vp9oRuntimeLoaderState
+struct WebMiereRuntimeLoaderState
 {
 	bool					ok;
 	bool					logged;
@@ -569,16 +571,16 @@ struct Vp9oRuntimeLoaderState
 	int						dirCount;
 	HMODULE					modules[10];
 	DLL_DIRECTORY_COOKIE	dirCookies[2];
-	wchar_t					errorPath[kVp9oRuntimePathMax];
+	wchar_t					errorPath[kWebMiereRuntimePathMax];
 	wchar_t					errorMessage[1024];
-	wchar_t					cudartPath[kVp9oRuntimePathMax];
+	wchar_t					cudartPath[kWebMiereRuntimePathMax];
 };
 
 static std::once_flag gRuntimeLoaderOnce;
-static Vp9oRuntimeLoaderState gRuntimeLoaderState = {};
+static WebMiereRuntimeLoaderState gRuntimeLoaderState = {};
 
 static bool
-Vp9oCopyWide(wchar_t *dst, size_t dstCount, const wchar_t *src)
+WebMiereCopyWide(wchar_t *dst, size_t dstCount, const wchar_t *src)
 {
 	if (dst == nullptr || dstCount == 0 || src == nullptr)
 	{
@@ -595,9 +597,9 @@ Vp9oCopyWide(wchar_t *dst, size_t dstCount, const wchar_t *src)
 
 
 static bool
-Vp9oAppendLeaf(const wchar_t *dir, const wchar_t *leaf, wchar_t *out, size_t outCount)
+WebMiereAppendLeaf(const wchar_t *dir, const wchar_t *leaf, wchar_t *out, size_t outCount)
 {
-	if (!Vp9oCopyWide(out, outCount, dir))
+	if (!WebMiereCopyWide(out, outCount, dir))
 	{
 		return false;
 	}
@@ -625,7 +627,7 @@ Vp9oAppendLeaf(const wchar_t *dir, const wchar_t *leaf, wchar_t *out, size_t out
 
 
 static void
-Vp9oFormatWin32Error(DWORD error, wchar_t *out, size_t outCount)
+WebMiereFormatWin32Error(DWORD error, wchar_t *out, size_t outCount)
 {
 	if (out == nullptr || outCount == 0)
 	{
@@ -648,7 +650,7 @@ Vp9oFormatWin32Error(DWORD error, wchar_t *out, size_t outCount)
 
 
 static bool
-Vp9oSetRuntimeFailure(Vp9oRuntimeLoaderState *state, const wchar_t *path, DWORD error)
+WebMiereSetRuntimeFailure(WebMiereRuntimeLoaderState *state, const wchar_t *path, DWORD error)
 {
 	if (state == nullptr)
 	{
@@ -656,14 +658,14 @@ Vp9oSetRuntimeFailure(Vp9oRuntimeLoaderState *state, const wchar_t *path, DWORD 
 	}
 	state->ok = false;
 	state->error = error;
-	Vp9oCopyWide(state->errorPath, kVp9oRuntimePathMax, path ? path : L"");
-	Vp9oFormatWin32Error(error, state->errorMessage, sizeof(state->errorMessage) / sizeof(state->errorMessage[0]));
+	WebMiereCopyWide(state->errorPath, kWebMiereRuntimePathMax, path ? path : L"");
+	WebMiereFormatWin32Error(error, state->errorMessage, sizeof(state->errorMessage) / sizeof(state->errorMessage[0]));
 	return false;
 }
 
 
 static void
-Vp9oLogRuntimeFailureOnce(Vp9oRuntimeLoaderState *state)
+WebMiereLogRuntimeFailureOnce(WebMiereRuntimeLoaderState *state)
 {
 	if (state == nullptr || state->logged)
 	{
@@ -684,25 +686,25 @@ Vp9oLogRuntimeFailureOnce(Vp9oRuntimeLoaderState *state)
 
 
 static bool
-Vp9oGetPluginDirectory(wchar_t *pluginDir, size_t pluginDirCount, Vp9oRuntimeLoaderState *state)
+WebMiereGetPluginDirectory(wchar_t *pluginDir, size_t pluginDirCount, WebMiereRuntimeLoaderState *state)
 {
 	HMODULE module = nullptr;
 	if (!GetModuleHandleExW(
 			GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-			reinterpret_cast<LPCWSTR>(&Vp9oGetPluginDirectory),
+			reinterpret_cast<LPCWSTR>(&WebMiereGetPluginDirectory),
 			&module))
 	{
-		return Vp9oSetRuntimeFailure(state, L"WebMiere.prm", GetLastError());
+		return WebMiereSetRuntimeFailure(state, L"WebMiere.prm", GetLastError());
 	}
 
 	const DWORD len = GetModuleFileNameW(module, pluginDir, static_cast<DWORD>(pluginDirCount));
 	if (len == 0)
 	{
-		return Vp9oSetRuntimeFailure(state, L"WebMiere.prm", GetLastError());
+		return WebMiereSetRuntimeFailure(state, L"WebMiere.prm", GetLastError());
 	}
 	if (len >= pluginDirCount)
 	{
-		return Vp9oSetRuntimeFailure(state, L"WebMiere.prm", ERROR_INSUFFICIENT_BUFFER);
+		return WebMiereSetRuntimeFailure(state, L"WebMiere.prm", ERROR_INSUFFICIENT_BUFFER);
 	}
 
 	for (DWORD i = len; i > 0; i--)
@@ -713,7 +715,7 @@ Vp9oGetPluginDirectory(wchar_t *pluginDir, size_t pluginDirCount, Vp9oRuntimeLoa
 			return true;
 		}
 	}
-	return Vp9oSetRuntimeFailure(state, pluginDir, ERROR_INVALID_NAME);
+	return WebMiereSetRuntimeFailure(state, pluginDir, ERROR_INVALID_NAME);
 }
 
 
@@ -730,16 +732,16 @@ MinaReady()
 	};
 	static_assert(sizeof(kMinaMark) == 32);
 
-	Vp9oRuntimeLoaderState scratchState = {};
-	wchar_t pluginDir[kVp9oRuntimePathMax] = {};
-	wchar_t candidatePath[kVp9oRuntimePathMax] = {};
+	WebMiereRuntimeLoaderState scratchState = {};
+	wchar_t pluginDir[kWebMiereRuntimePathMax] = {};
+	wchar_t candidatePath[kWebMiereRuntimePathMax] = {};
 
-	if (!Vp9oGetPluginDirectory(pluginDir, kVp9oRuntimePathMax, &scratchState) ||
-		!Vp9oAppendLeaf(
+	if (!WebMiereGetPluginDirectory(pluginDir, kWebMiereRuntimePathMax, &scratchState) ||
+		!WebMiereAppendLeaf(
 			pluginDir,
 			kMinaLeaf,
 			candidatePath,
-			kVp9oRuntimePathMax))
+			kWebMiereRuntimePathMax))
 	{
 		return false;
 	}
@@ -790,30 +792,42 @@ MinaReady()
 			break;
 		}
 
-		unsigned char buffer[16 * 1024] = {};
+		// Keep a trailing CR for the next read so a split CRLF is one LF.
+		unsigned char buffer[1024 + 1] = {};
+		DWORD carry = 0;
 		bool consumed = true;
 		for (;;)
 		{
 			DWORD bytesRead = 0;
 			if (!ReadFile(
 					file,
-					buffer,
-					static_cast<DWORD>(sizeof(buffer)),
+					buffer + carry,
+					static_cast<DWORD>(sizeof(buffer) - 1),
 					&bytesRead,
 					nullptr))
 			{
 				consumed = false;
 				break;
 			}
-			if (bytesRead == 0)
+			const DWORD available = bytesRead + carry;
+			carry = bytesRead > 0 && buffer[available - 1] == '\r' ? 1 : 0;
+			const DWORD end = available - carry;
+			DWORD written = 0;
+			for (DWORD i = 0; i < end; ++i)
 			{
-				break;
+				if (buffer[i] == '\r' && i + 1 < end && buffer[i + 1] == '\n')
+					continue;
+				buffer[written++] = buffer[i];
 			}
-			if (BCryptHashData(hash, buffer, bytesRead, 0) != 0)
+			if (written && BCryptHashData(hash, buffer, written, 0) != 0)
 			{
 				consumed = false;
 				break;
 			}
+			if (bytesRead == 0)
+				break;
+			if (carry)
+				buffer[0] = '\r';
 		}
 		if (!consumed)
 		{
@@ -863,12 +877,12 @@ MinaReadyOnce()
 
 
 static bool
-Vp9oAddRuntimeDirectory(Vp9oRuntimeLoaderState *state, const wchar_t *path)
+WebMiereAddRuntimeDirectory(WebMiereRuntimeLoaderState *state, const wchar_t *path)
 {
 	DLL_DIRECTORY_COOKIE cookie = AddDllDirectory(path);
 	if (cookie == nullptr)
 	{
-		return Vp9oSetRuntimeFailure(state, path, GetLastError());
+		return WebMiereSetRuntimeFailure(state, path, GetLastError());
 	}
 	if (state->dirCount < static_cast<int>(sizeof(state->dirCookies) / sizeof(state->dirCookies[0])))
 	{
@@ -879,7 +893,7 @@ Vp9oAddRuntimeDirectory(Vp9oRuntimeLoaderState *state, const wchar_t *path)
 
 
 static bool
-Vp9oLoadRuntimeDll(Vp9oRuntimeLoaderState *state, const wchar_t *path)
+WebMiereLoadRuntimeDll(WebMiereRuntimeLoaderState *state, const wchar_t *path)
 {
 	const DWORD flags =
 		LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR |
@@ -888,7 +902,7 @@ Vp9oLoadRuntimeDll(Vp9oRuntimeLoaderState *state, const wchar_t *path)
 	HMODULE module = LoadLibraryExW(path, nullptr, flags);
 	if (module == nullptr)
 	{
-		return Vp9oSetRuntimeFailure(state, path, GetLastError());
+		return WebMiereSetRuntimeFailure(state, path, GetLastError());
 	}
 	if (state->moduleCount < static_cast<int>(sizeof(state->modules) / sizeof(state->modules[0])))
 	{
@@ -899,7 +913,7 @@ Vp9oLoadRuntimeDll(Vp9oRuntimeLoaderState *state, const wchar_t *path)
 
 
 static bool
-Vp9oLoadCudart(Vp9oRuntimeLoaderState *state, const wchar_t *nvidiaDir)
+WebMiereLoadCudart(WebMiereRuntimeLoaderState *state, const wchar_t *nvidiaDir)
 {
 	HMODULE existing = GetModuleHandleW(L"cudart64_12.dll");
 	if (existing != nullptr)
@@ -910,72 +924,72 @@ Vp9oLoadCudart(Vp9oRuntimeLoaderState *state, const wchar_t *nvidiaDir)
 			static_cast<DWORD>(sizeof(state->cudartPath) / sizeof(state->cudartPath[0])));
 		if (len == 0)
 		{
-			return Vp9oSetRuntimeFailure(state, L"cudart64_12.dll", GetLastError());
+			return WebMiereSetRuntimeFailure(state, L"cudart64_12.dll", GetLastError());
 		}
 		if (len >= sizeof(state->cudartPath) / sizeof(state->cudartPath[0]))
 		{
-			return Vp9oSetRuntimeFailure(state, L"cudart64_12.dll", ERROR_INSUFFICIENT_BUFFER);
+			return WebMiereSetRuntimeFailure(state, L"cudart64_12.dll", ERROR_INSUFFICIENT_BUFFER);
 		}
-		return Vp9oLoadRuntimeDll(state, state->cudartPath);
+		return WebMiereLoadRuntimeDll(state, state->cudartPath);
 	}
 
-	wchar_t path[kVp9oRuntimePathMax] = {};
-	if (!Vp9oAppendLeaf(nvidiaDir, L"cudart64_12.dll", path, kVp9oRuntimePathMax))
+	wchar_t path[kWebMiereRuntimePathMax] = {};
+	if (!WebMiereAppendLeaf(nvidiaDir, L"cudart64_12.dll", path, kWebMiereRuntimePathMax))
 	{
-		return Vp9oSetRuntimeFailure(state, nvidiaDir, ERROR_INSUFFICIENT_BUFFER);
+		return WebMiereSetRuntimeFailure(state, nvidiaDir, ERROR_INSUFFICIENT_BUFFER);
 	}
-	if (!Vp9oLoadRuntimeDll(state, path))
+	if (!WebMiereLoadRuntimeDll(state, path))
 	{
 		return false;
 	}
-	Vp9oCopyWide(state->cudartPath, sizeof(state->cudartPath) / sizeof(state->cudartPath[0]), path);
+	WebMiereCopyWide(state->cudartPath, sizeof(state->cudartPath) / sizeof(state->cudartPath[0]), path);
 	return true;
 }
 
 
 static bool
-Vp9oLoadRuntimeDllFromDir(Vp9oRuntimeLoaderState *state, const wchar_t *dir, const wchar_t *name)
+WebMiereLoadRuntimeDllFromDir(WebMiereRuntimeLoaderState *state, const wchar_t *dir, const wchar_t *name)
 {
-	wchar_t path[kVp9oRuntimePathMax] = {};
-	if (!Vp9oAppendLeaf(dir, name, path, kVp9oRuntimePathMax))
+	wchar_t path[kWebMiereRuntimePathMax] = {};
+	if (!WebMiereAppendLeaf(dir, name, path, kWebMiereRuntimePathMax))
 	{
-		return Vp9oSetRuntimeFailure(state, dir, ERROR_INSUFFICIENT_BUFFER);
+		return WebMiereSetRuntimeFailure(state, dir, ERROR_INSUFFICIENT_BUFFER);
 	}
-	return Vp9oLoadRuntimeDll(state, path);
+	return WebMiereLoadRuntimeDll(state, path);
 }
 
 
 static void
-Vp9oRuntimeLoaderOnce()
+WebMiereRuntimeLoaderOnce()
 {
-	Vp9oRuntimeLoaderState *state = &gRuntimeLoaderState;
-	wchar_t pluginDir[kVp9oRuntimePathMax] = {};
-	wchar_t ffmpegDir[kVp9oRuntimePathMax] = {};
-	wchar_t nvidiaDir[kVp9oRuntimePathMax] = {};
+	WebMiereRuntimeLoaderState *state = &gRuntimeLoaderState;
+	wchar_t pluginDir[kWebMiereRuntimePathMax] = {};
+	wchar_t ffmpegDir[kWebMiereRuntimePathMax] = {};
+	wchar_t nvidiaDir[kWebMiereRuntimePathMax] = {};
 
-	if (!Vp9oGetPluginDirectory(pluginDir, kVp9oRuntimePathMax, state) ||
-		!Vp9oAppendLeaf(pluginDir, L"ffmpeg", ffmpegDir, kVp9oRuntimePathMax) ||
-		!Vp9oAppendLeaf(pluginDir, L"nvidia", nvidiaDir, kVp9oRuntimePathMax))
+	if (!WebMiereGetPluginDirectory(pluginDir, kWebMiereRuntimePathMax, state) ||
+		!WebMiereAppendLeaf(pluginDir, L"ffmpeg", ffmpegDir, kWebMiereRuntimePathMax) ||
+		!WebMiereAppendLeaf(pluginDir, L"nvidia", nvidiaDir, kWebMiereRuntimePathMax))
 	{
 		if (state->error == 0)
 		{
-			Vp9oSetRuntimeFailure(state, pluginDir, ERROR_INSUFFICIENT_BUFFER);
+			WebMiereSetRuntimeFailure(state, pluginDir, ERROR_INSUFFICIENT_BUFFER);
 		}
 		return;
 	}
 
-	if (!Vp9oAddRuntimeDirectory(state, ffmpegDir) ||
-		!Vp9oAddRuntimeDirectory(state, nvidiaDir) ||
-		!Vp9oLoadCudart(state, nvidiaDir) ||
-		!Vp9oLoadRuntimeDllFromDir(state, nvidiaDir, L"nppc64_12.dll") ||
-		!Vp9oLoadRuntimeDllFromDir(state, nvidiaDir, L"nppicc64_12.dll") ||
-		!Vp9oLoadRuntimeDllFromDir(state, nvidiaDir, L"nppidei64_12.dll") ||
-		!Vp9oLoadRuntimeDllFromDir(state, nvidiaDir, L"nppig64_12.dll") ||
-		!Vp9oLoadRuntimeDllFromDir(state, ffmpegDir, L"avutil-60.dll") ||
-		!Vp9oLoadRuntimeDllFromDir(state, ffmpegDir, L"swresample-6.dll") ||
-		!Vp9oLoadRuntimeDllFromDir(state, ffmpegDir, L"swscale-9.dll") ||
-		!Vp9oLoadRuntimeDllFromDir(state, ffmpegDir, L"avcodec-62.dll") ||
-		!Vp9oLoadRuntimeDllFromDir(state, ffmpegDir, L"avformat-62.dll"))
+	if (!WebMiereAddRuntimeDirectory(state, ffmpegDir) ||
+		!WebMiereAddRuntimeDirectory(state, nvidiaDir) ||
+		!WebMiereLoadCudart(state, nvidiaDir) ||
+		!WebMiereLoadRuntimeDllFromDir(state, nvidiaDir, L"nppc64_12.dll") ||
+		!WebMiereLoadRuntimeDllFromDir(state, nvidiaDir, L"nppicc64_12.dll") ||
+		!WebMiereLoadRuntimeDllFromDir(state, nvidiaDir, L"nppidei64_12.dll") ||
+		!WebMiereLoadRuntimeDllFromDir(state, nvidiaDir, L"nppig64_12.dll") ||
+		!WebMiereLoadRuntimeDllFromDir(state, ffmpegDir, L"avutil-60.dll") ||
+		!WebMiereLoadRuntimeDllFromDir(state, ffmpegDir, L"swresample-6.dll") ||
+		!WebMiereLoadRuntimeDllFromDir(state, ffmpegDir, L"swscale-9.dll") ||
+		!WebMiereLoadRuntimeDllFromDir(state, ffmpegDir, L"avcodec-62.dll") ||
+		!WebMiereLoadRuntimeDllFromDir(state, ffmpegDir, L"avformat-62.dll"))
 	{
 		return;
 	}
@@ -985,12 +999,12 @@ Vp9oRuntimeLoaderOnce()
 
 
 static bool
-Vp9oEnsureRuntimeLoaded()
+WebMiereEnsureRuntimeLoaded()
 {
-	std::call_once(gRuntimeLoaderOnce, Vp9oRuntimeLoaderOnce);
+	std::call_once(gRuntimeLoaderOnce, WebMiereRuntimeLoaderOnce);
 	if (!gRuntimeLoaderState.ok)
 	{
-		Vp9oLogRuntimeFailureOnce(&gRuntimeLoaderState);
+		WebMiereLogRuntimeFailureOnce(&gRuntimeLoaderState);
 		return false;
 	}
 	return true;
@@ -1011,7 +1025,7 @@ PREMPLUGENTRY DllExport xImportEntry(
 			return imOtherErr;
 		}
 
-		if (!Vp9oEnsureRuntimeLoaded())
+		if (!WebMiereEnsureRuntimeLoaded())
 		{
 			return imOtherErr;
 		}
@@ -1122,6 +1136,37 @@ PREMPLUGENTRY DllExport xImportEntry(
 }
 
 
+static bool
+IsAfterEffectsHost(const imStdParms& stdParms)
+{
+	if (!stdParms.piSuites || !stdParms.piSuites->utilFuncs ||
+		!stdParms.piSuites->utilFuncs->getSPBasicSuite)
+	{
+		return false;
+	}
+
+	SPBasicSuite *basic = stdParms.piSuites->utilFuncs->getSPBasicSuite();
+	if (!basic || !basic->AcquireSuite || !basic->ReleaseSuite)
+	{
+		return false;
+	}
+
+	const void *suite = nullptr;
+	if (basic->AcquireSuite(kPrSDKAppInfoSuite, kPrSDKAppInfoSuiteVersion, &suite) != kSPNoError)
+	{
+		return false;
+	}
+
+	const auto *appInfo = static_cast<const PrSDKAppInfoSuite*>(suite);
+	csSDK_uint32 hostID = 0;
+	const bool isAfterEffects = appInfo && appInfo->GetAppInfo &&
+		appInfo->GetAppInfo(PrSDKAppInfoSuite::kAppInfo_AppFourCC, &hostID) == suiteError_NoError &&
+		hostID == kAppAfterEffects;
+	basic->ReleaseSuite(kPrSDKAppInfoSuite, kPrSDKAppInfoSuiteVersion);
+	return isAfterEffects;
+}
+
+
 static prMALError
 SDKInit(
 	imStdParms		*stdParms,
@@ -1143,7 +1188,7 @@ SDKInit(
 	importInfo->keepLoaded			= kPrFalse;
 
 	// 224 = Feb. 24, the birthday of Mina, KawaiiEngine's official mascot.
-	importInfo->priority			= 224;
+	importInfo->priority			= IsAfterEffectsHost(*stdParms) ? 37 : 224;
 
 
 	if (stdParms->imInterfaceVer >= IMPORTMOD_VERSION_6)
@@ -1234,7 +1279,6 @@ SDKGetIndPixelFormat(
 	csSDK_size_t		index,
 	imIndPixelFormatRec	*pixelFormatRec)
 {
-	(void)stdParms;
 	if (pixelFormatRec == NULL)
 	{
 		return imOtherErr;
@@ -1242,17 +1286,25 @@ SDKGetIndPixelFormat(
 	prMALError result = malNoError;
 
 
+	WebMiereHandleLock handleLock(stdParms, reinterpret_cast<ImporterLocalRecH>(pixelFormatRec->privatedata));
+	if (handleLock.IsValid() && handleLock.Get()->hasAlpha)
+	{
+		if (index != 0) return imBadFormatIndex;
+		pixelFormatRec->outPixelFormat = PrPixelFormat_BGRA_4444_8u;
+		return malNoError;
+	}
+
 	PrPixelFormat formats[3];
 	csSDK_size_t  count = 0;
 
 
-#if VP9O_ENABLE_YUV420P_RETURN && VP9O_PREFER_YUV420P_RETURN
+#if WEBMIERE_ENABLE_YUV420P_RETURN && WEBMIERE_PREFER_YUV420P_RETURN
 	AppendPixelFormatUnique(formats, &count, PrPixelFormat_YUV_420_MPEG4_FRAME_PICTURE_PLANAR_8u_709);
 #endif
 
 
 	AppendPixelFormatUnique(formats, &count, PrPixelFormat_BGRA_4444_8u);
-#if VP9O_ENABLE_YUV420P_RETURN
+#if WEBMIERE_ENABLE_YUV420P_RETURN
 	AppendPixelFormatUnique(formats, &count, PrPixelFormat_YUV_420_MPEG4_FRAME_PICTURE_PLANAR_8u_709);
 #endif
 
@@ -1279,13 +1331,13 @@ SDKGetInfo8(
 	ImporterLocalRecH	ldataH		= NULL;
 	bool				freshAlloc	= false;
 
-	if (!Vp9oHasRequiredSuites(stdParms) ||
+	if (!WebMiereHasRequiredSuites(stdParms) ||
 		fileAccessInfo8 == NULL || fileInfo8 == NULL ||
 		fileAccessInfo8->filepath == NULL)
 	{
 		return imOtherErr;
 	}
-	Vp9oResetFileInfoStreamFields(fileInfo8);
+	WebMiereResetFileInfoStreamFields(fileInfo8);
 
 	MediaProbeInfo	probe;
 	std::string		probeErr;
@@ -1332,13 +1384,13 @@ SDKGetInfo8(
 		freshAlloc = true;
 	}
 
-	Vp9oHandleLock handleLock(stdParms, ldataH);
+	WebMiereHandleLock handleLock(stdParms, ldataH);
 	if (!handleLock.IsValid())
 	{
 		if (freshAlloc)
 		{
 			handleLock.Unlock();
-			Vp9oDisposePrivateDataHandle(stdParms, ldataH, &fileInfo8->privatedata);
+			WebMiereDisposePrivateDataHandle(stdParms, ldataH, &fileInfo8->privatedata);
 		}
 		return imMemErr;
 	}
@@ -1354,25 +1406,25 @@ SDKGetInfo8(
 	{
 		return imBadFile;
 	}
-	if (!Vp9oEnsureLocks(ldata))
+	if (!WebMiereEnsureLocks(ldata))
 	{
 		if (freshAlloc)
 		{
 			handleLock.Unlock();
-			Vp9oDisposePrivateDataHandle(stdParms, ldataH, &fileInfo8->privatedata);
+			WebMiereDisposePrivateDataHandle(stdParms, ldataH, &fileInfo8->privatedata);
 		}
 		return imMemErr;
 	}
 
-	if (!Vp9oCopyFilePath(ldata->filePath,
+	if (!WebMiereCopyFilePath(ldata->filePath,
 						  sizeof(ldata->filePath) / sizeof(ldata->filePath[0]),
 						  fileAccessInfo8->filepath))
 	{
 		if (freshAlloc)
 		{
-			Vp9oFreeLocks(ldataH);
+			WebMiereFreeLocks(ldataH);
 			handleLock.Unlock();
-			Vp9oDisposePrivateDataHandle(stdParms, ldataH, &fileInfo8->privatedata);
+			WebMiereDisposePrivateDataHandle(stdParms, ldataH, &fileInfo8->privatedata);
 		}
 		return imBadFile;
 	}
@@ -1410,9 +1462,9 @@ SDKGetInfo8(
 	{
 		if (freshAlloc)
 		{
-			Vp9oFreeLocks(ldataH);
+			WebMiereFreeLocks(ldataH);
 			handleLock.Unlock();
-			Vp9oDisposePrivateDataHandle(stdParms, ldataH, &fileInfo8->privatedata);
+			WebMiereDisposePrivateDataHandle(stdParms, ldataH, &fileInfo8->privatedata);
 		}
 		return imOtherErr;
 	}
@@ -1422,12 +1474,12 @@ SDKGetInfo8(
 		ldata->PPixSuite == NULL ||
 		ldata->TimeSuite == NULL)
 	{
-		Vp9oReleaseSuites(ldata);
+		WebMiereReleaseSuites(ldata);
 		if (freshAlloc)
 		{
-			Vp9oFreeLocks(ldataH);
+			WebMiereFreeLocks(ldataH);
 			handleLock.Unlock();
-			Vp9oDisposePrivateDataHandle(stdParms, ldataH, &fileInfo8->privatedata);
+			WebMiereDisposePrivateDataHandle(stdParms, ldataH, &fileInfo8->privatedata);
 		}
 		return imOtherErr;
 	}
@@ -1439,19 +1491,19 @@ SDKGetInfo8(
 	const int frScale  = probe.frameRateNum;
 	const int frSample = probe.frameRateDen;
 	PrTime frameRatePrTime = 0;
-	if (!Vp9oComputeFrameRatePrTime(ticksPerSecond, frScale, frSample, &frameRatePrTime))
+	if (!WebMiereComputeFrameRatePrTime(ticksPerSecond, frScale, frSample, &frameRatePrTime))
 	{
 		if (freshAlloc)
 		{
-			Vp9oReleaseSuites(ldata);
-			Vp9oFreeLocks(ldataH);
+			WebMiereReleaseSuites(ldata);
+			WebMiereFreeLocks(ldataH);
 			handleLock.Unlock();
-			Vp9oDisposePrivateDataHandle(stdParms, ldataH, &fileInfo8->privatedata);
+			WebMiereDisposePrivateDataHandle(stdParms, ldataH, &fileInfo8->privatedata);
 		}
 		return imBadFile;
 	}
 
-	if (!Vp9oApplyProbeStreamMapping(ldata, probe, fileInfo8->streamIdx))
+	if (!WebMiereApplyProbeStreamMapping(ldata, probe, fileInfo8->streamIdx))
 	{
 		return imBadStreamIndex;
 	}
@@ -1467,7 +1519,7 @@ SDKGetInfo8(
 		fileInfo8->vidInfo.imageHeight		= ldata->height;
 		fileInfo8->vidInfo.depth			= 32;
 		fileInfo8->vidInfo.fieldType		= prFieldsNone;
-		fileInfo8->vidInfo.alphaType		= alphaNone;
+		fileInfo8->vidInfo.alphaType		= ldata->hasAlpha ? alphaStraight : alphaNone;
 		fileInfo8->vidInfo.pixelAspectNum	= 1;
 		fileInfo8->vidInfo.pixelAspectDen	= 1;
 		fileInfo8->vidInfo.supportsAsyncIO			= kPrFalse;
@@ -1528,7 +1580,7 @@ SDKOpenFile8(
 	ImporterLocalRecH	ldataH		= NULL;
 	bool				freshAlloc	= false;
 
-	if (!Vp9oHasMemoryFuncs(stdParms) ||
+	if (!WebMiereHasMemoryFuncs(stdParms) ||
 		fileRef == NULL || fileOpenRec8 == NULL ||
 		fileOpenRec8->fileinfo.filepath == NULL)
 	{
@@ -1555,13 +1607,13 @@ SDKOpenFile8(
 		freshAlloc = true;
 	}
 
-	Vp9oHandleLock handleLock(stdParms, ldataH);
+	WebMiereHandleLock handleLock(stdParms, ldataH);
 	if (!handleLock.IsValid())
 	{
 		if (freshAlloc)
 		{
 			handleLock.Unlock();
-			Vp9oDisposePrivateDataHandle(stdParms, ldataH, &fileOpenRec8->privatedata);
+			WebMiereDisposePrivateDataHandle(stdParms, ldataH, &fileOpenRec8->privatedata);
 		}
 		return imMemErr;
 	}
@@ -1575,12 +1627,12 @@ SDKOpenFile8(
 		ldata->hasVideo = (fileOpenRec8->inStreamIdx == 0) ? kPrTrue : kPrFalse;
 		ldata->ffmpegAudioStreamIndex = -1;
 	}
-	if (!Vp9oEnsureLocks(ldata))
+	if (!WebMiereEnsureLocks(ldata))
 	{
 		if (freshAlloc)
 		{
 			handleLock.Unlock();
-			Vp9oDisposePrivateDataHandle(stdParms, ldataH, &fileOpenRec8->privatedata);
+			WebMiereDisposePrivateDataHandle(stdParms, ldataH, &fileOpenRec8->privatedata);
 		}
 		return imMemErr;
 	}
@@ -1588,9 +1640,9 @@ SDKOpenFile8(
 	{
 		if (freshAlloc)
 		{
-			Vp9oFreeLocks(ldataH);
+			WebMiereFreeLocks(ldataH);
 			handleLock.Unlock();
-			Vp9oDisposePrivateDataHandle(stdParms, ldataH, &fileOpenRec8->privatedata);
+			WebMiereDisposePrivateDataHandle(stdParms, ldataH, &fileOpenRec8->privatedata);
 		}
 		return imBadFile;
 	}
@@ -1601,15 +1653,15 @@ SDKOpenFile8(
 	}
 
 
-	if (!Vp9oCopyFilePath(ldata->filePath,
+	if (!WebMiereCopyFilePath(ldata->filePath,
 						  sizeof(ldata->filePath) / sizeof(ldata->filePath[0]),
 						  fileOpenRec8->fileinfo.filepath))
 	{
 		if (freshAlloc)
 		{
-			Vp9oFreeLocks(ldataH);
+			WebMiereFreeLocks(ldataH);
 			handleLock.Unlock();
-			Vp9oDisposePrivateDataHandle(stdParms, ldataH, &fileOpenRec8->privatedata);
+			WebMiereDisposePrivateDataHandle(stdParms, ldataH, &fileOpenRec8->privatedata);
 		}
 		*fileRef = imInvalidHandleValue;
 		fileOpenRec8->fileinfo.fileref = imInvalidHandleValue;
@@ -1620,11 +1672,11 @@ SDKOpenFile8(
 		MediaProbeInfo probe;
 		std::string probeErr;
 		if (!ProbeMedia(fileOpenRec8->fileinfo.filepath, &probe, &probeErr) ||
-			!Vp9oApplyProbeStreamMapping(ldata, probe, fileOpenRec8->inStreamIdx))
+			!WebMiereApplyProbeStreamMapping(ldata, probe, fileOpenRec8->inStreamIdx))
 		{
-			Vp9oFreeLocks(ldataH);
+			WebMiereFreeLocks(ldataH);
 			handleLock.Unlock();
-			Vp9oDisposePrivateDataHandle(stdParms, ldataH, &fileOpenRec8->privatedata);
+			WebMiereDisposePrivateDataHandle(stdParms, ldataH, &fileOpenRec8->privatedata);
 			return imBadFile;
 		}
 	}
@@ -1643,9 +1695,9 @@ SDKOpenFile8(
 	{
 		if (freshAlloc)
 		{
-			Vp9oFreeLocks(ldataH);
+			WebMiereFreeLocks(ldataH);
 			handleLock.Unlock();
-			Vp9oDisposePrivateDataHandle(stdParms, ldataH, &fileOpenRec8->privatedata);
+			WebMiereDisposePrivateDataHandle(stdParms, ldataH, &fileOpenRec8->privatedata);
 		}
 		*fileRef = imInvalidHandleValue;
 		return imBadFile;
@@ -1654,7 +1706,7 @@ SDKOpenFile8(
 	ldata->fileRef					= h;
 	*fileRef						= h;
 	fileOpenRec8->fileinfo.fileref	= h;
-	fileOpenRec8->fileinfo.filetype	= Vp9oFiletypeForPath(fileOpenRec8->fileinfo.filepath);
+	fileOpenRec8->fileinfo.filetype	= WebMiereFiletypeForPath(fileOpenRec8->fileinfo.filepath);
 	fileOpenRec8->outExtraMemoryUsage = 0;
 
 
@@ -1671,13 +1723,14 @@ SDKOpenFile8(
 		fileOpenRec8->fileinfo.fileref	= imInvalidHandleValue;
 		if (freshAlloc)
 		{
-			Vp9oFreeLocks(ldataH);
+			WebMiereFreeLocks(ldataH);
 			handleLock.Unlock();
-			Vp9oDisposePrivateDataHandle(stdParms, ldataH, &fileOpenRec8->privatedata);
+			WebMiereDisposePrivateDataHandle(stdParms, ldataH, &fileOpenRec8->privatedata);
 		}
 		return imBadFile;
 	}
-	if (ldata->hasVideo && !Vp9oIsValidVideoSize(ldata->width, ldata->height))
+	if (openedDecoder != NULL) ldata->hasAlpha = openedDecoder->HasAlpha();
+	if (ldata->hasVideo && !WebMiereIsValidVideoSize(ldata->width, ldata->height))
 	{
 		ldata->width  = openedDecoder->Width();
 		ldata->height = openedDecoder->Height();
@@ -1693,9 +1746,9 @@ SDKOpenFile8(
 		fileOpenRec8->fileinfo.fileref	= imInvalidHandleValue;
 		if (freshAlloc)
 		{
-			Vp9oFreeLocks(ldataH);
+			WebMiereFreeLocks(ldataH);
 			handleLock.Unlock();
-			Vp9oDisposePrivateDataHandle(stdParms, ldataH, &fileOpenRec8->privatedata);
+			WebMiereDisposePrivateDataHandle(stdParms, ldataH, &fileOpenRec8->privatedata);
 		}
 		return imBadFile;
 	}
@@ -1704,7 +1757,7 @@ SDKOpenFile8(
 		1 +
 		(ldata->hasVideo ? 1 : 0) +
 		(ldata->hasAudio ? 2 : 0);
-	if (!Vp9oSetImporterStreamFileCount(
+	if (!WebMiereSetImporterStreamFileCount(
 			stdParms,
 			static_cast<csSDK_uint32>(fileOpenRec8->inImporterID),
 			fileOpenRec8->inStreamIdx,
@@ -1716,9 +1769,9 @@ SDKOpenFile8(
 		fileOpenRec8->fileinfo.fileref	= imInvalidHandleValue;
 		if (freshAlloc)
 		{
-			Vp9oFreeLocks(ldataH);
+			WebMiereFreeLocks(ldataH);
 			handleLock.Unlock();
-			Vp9oDisposePrivateDataHandle(stdParms, ldataH, &fileOpenRec8->privatedata);
+			WebMiereDisposePrivateDataHandle(stdParms, ldataH, &fileOpenRec8->privatedata);
 		}
 		return imOtherErr;
 	}
@@ -1733,13 +1786,13 @@ SDKQuietFile(
 	imFileRef	*fileRef,
 	void		*privateData)
 {
-	if (!Vp9oHasMemoryFuncs(stdParms))
+	if (!WebMiereHasMemoryFuncs(stdParms))
 	{
 		return imOtherErr;
 	}
 	ImporterLocalRecH ldataH = reinterpret_cast<ImporterLocalRecH>(privateData);
 
-	Vp9oHandleLock handleLock(stdParms, ldataH);
+	WebMiereHandleLock handleLock(stdParms, ldataH);
 	ReleaseOpenResources(handleLock.Get(), fileRef);
 
 	return malNoError;
@@ -1752,20 +1805,20 @@ SDKCloseFile(
 	imFileRef	*fileRef,
 	void		*privateData)
 {
-	if (!Vp9oHasMemoryFuncs(stdParms))
+	if (!WebMiereHasMemoryFuncs(stdParms))
 	{
 		return imOtherErr;
 	}
 	ImporterLocalRecH ldataH = reinterpret_cast<ImporterLocalRecH>(privateData);
 
-	Vp9oHandleLock handleLock(stdParms, ldataH);
+	WebMiereHandleLock handleLock(stdParms, ldataH);
 	ImporterLocalRecP ldata = handleLock.Get();
 	ReleaseOpenResources(ldata, fileRef);
 
 	if (ldata)
 	{
-		Vp9oReleaseSuites(ldata);
-		Vp9oFreeLocks(ldataH);
+		WebMiereReleaseSuites(ldata);
+		WebMiereFreeLocks(ldataH);
 
 		handleLock.Unlock();
 		stdParms->piSuites->memFuncs->disposeHandle(reinterpret_cast<char**>(ldataH));
@@ -1782,13 +1835,13 @@ SDKPreferredFrameSize(
 {
 	prMALError			result	= malNoError;
 
-	if (!Vp9oHasMemoryFuncs(stdParms) || preferredFrameSizeRec == NULL)
+	if (!WebMiereHasMemoryFuncs(stdParms) || preferredFrameSizeRec == NULL)
 	{
 		return imOtherErr;
 	}
 	ImporterLocalRecH	ldataH	= reinterpret_cast<ImporterLocalRecH>(preferredFrameSizeRec->inPrivateData);
 
-	Vp9oHandleLock handleLock(stdParms, ldataH);
+	WebMiereHandleLock handleLock(stdParms, ldataH);
 	ImporterLocalRecP ldata = handleLock.Get();
 	if (ldata == NULL)
 	{
@@ -1819,13 +1872,13 @@ SDKGetSourceVideo(
 	imSourceVideoRec	*sourceVideoRec)
 {
 	prMALError			result	= malNoError;
-	if (!Vp9oHasMemoryFuncs(stdParms) || sourceVideoRec == NULL)
+	if (!WebMiereHasMemoryFuncs(stdParms) || sourceVideoRec == NULL)
 	{
 		return imOtherErr;
 	}
 	ImporterLocalRecH	ldataH	= reinterpret_cast<ImporterLocalRecH>(sourceVideoRec->inPrivateData);
 
-	Vp9oHandleLock handleLock(stdParms, ldataH);
+	WebMiereHandleLock handleLock(stdParms, ldataH);
 	ImporterLocalRecP ldata = handleLock.Get();
 	if (ldata == NULL)
 	{
@@ -1835,12 +1888,12 @@ SDKGetSourceVideo(
 	{
 		return imOtherErr;
 	}
-	if (!Vp9oEnsureLocks(ldata))
+	if (!WebMiereEnsureLocks(ldata))
 	{
 		return imMemErr;
 	}
 
-	Vp9oScopedLock lock(Vp9oVideoLock(ldata));
+	WebMiereScopedLock lock(WebMiereVideoLock(ldata));
 
 	csSDK_int64 theFrame = 0;
 	if (ldata->frameRatePrTime > 0)
@@ -1861,16 +1914,16 @@ SDKGetSourceVideo(
 	VideoDecoder		*decoder		= EnsureDecoder(ldataH);
 
 
-	Vp9oOutputFormat	outFmt;
+	WebMiereOutputFormat	outFmt;
 	if (!SelectOutputFormat(sourceVideoRec->inFrameFormats, sourceVideoRec->inNumFrameFormats,
-							ppixAvailable, ppix2Available, ldata->width, ldata->height, &outFmt))
+							ppixAvailable, ppix2Available && !ldata->hasAlpha, ldata->width, ldata->height, &outFmt))
 	{
 		return imOtherErr;
 	}
 
 
-#if VP9O_ENABLE_YUV420P_RETURN
-	if (outFmt.kind == VP9O_OUTPUT_YUV420P8)
+#if WEBMIERE_ENABLE_YUV420P_RETURN
+	if (outFmt.kind == WEBMIERE_OUTPUT_YUV420P8)
 	{
 		bool attemptedYuv = false;
 		if (decoder != NULL && ppix2Available)
@@ -1923,7 +1976,8 @@ SDKGetSourceVideo(
 		{
 			const bool readFailed = (decoder != NULL && decoder->HadReadError());
 			DisposeOutputPPix(ldata, sourceVideoRec->outFrame);
-			return readFailed ? imFileReadFailed : imOtherErr;
+			if (readFailed) return imFileReadFailed;
+			return decoder != nullptr && decoder->HadDecodeError() ? imDecompressionError : imOtherErr;
 		}
 	}
 	catch (const std::bad_alloc&)
@@ -2030,7 +2084,7 @@ SDKReadAudioSamples(
 	}
 
 
-	PrAudioSample next = Vp9oSaturatingAddAudioSamples(startSample, reqSize);
+	PrAudioSample next = WebMiereSaturatingAddAudioSamples(startSample, reqSize);
 	if (total > 0 && next > total)
 	{
 		next = total;
@@ -2050,14 +2104,14 @@ SDKImportAudio7(
 {
 	(void)fileRef;
 
-	if (!Vp9oHasMemoryFuncs(stdParms) || audioRec7 == NULL)
+	if (!WebMiereHasMemoryFuncs(stdParms) || audioRec7 == NULL)
 	{
 		return imOtherErr;
 	}
 
 	ImporterLocalRecH ldataH = reinterpret_cast<ImporterLocalRecH>(audioRec7->privateData);
 
-	Vp9oHandleLock handleLock(stdParms, ldataH);
+	WebMiereHandleLock handleLock(stdParms, ldataH);
 	ImporterLocalRecP ldata = handleLock.Get();
 	if (ldata == NULL)
 	{
@@ -2067,12 +2121,12 @@ SDKImportAudio7(
 	{
 		return imOtherErr;
 	}
-	if (!Vp9oEnsureLocks(ldata))
+	if (!WebMiereEnsureLocks(ldata))
 	{
 		return imMemErr;
 	}
 
-	Vp9oScopedLock lock(Vp9oAudioLock(ldata));
+	WebMiereScopedLock lock(WebMiereAudioLock(ldata));
 	AudioDecoder *ad = EnsureAudioDecoder(ldataH);
 	return SDKReadAudioSamples(ldataH, audioRec7, ad, &ldata->savedAudioPosition);
 }
@@ -2086,14 +2140,14 @@ SDKResetSequentialAudio(
 {
 	(void)fileRef;
 
-	if (!Vp9oHasMemoryFuncs(stdParms) || audioRec7 == NULL)
+	if (!WebMiereHasMemoryFuncs(stdParms) || audioRec7 == NULL)
 	{
 		return imOtherErr;
 	}
 
 	ImporterLocalRecH ldataH = reinterpret_cast<ImporterLocalRecH>(audioRec7->privateData);
 
-	Vp9oHandleLock handleLock(stdParms, ldataH);
+	WebMiereHandleLock handleLock(stdParms, ldataH);
 	ImporterLocalRecP ldata = handleLock.Get();
 	if (ldata == NULL)
 	{
@@ -2103,12 +2157,12 @@ SDKResetSequentialAudio(
 	{
 		return imOtherErr;
 	}
-	if (!Vp9oEnsureLocks(ldata))
+	if (!WebMiereEnsureLocks(ldata))
 	{
 		return imMemErr;
 	}
 
-	Vp9oScopedLock lock(Vp9oAudioLock(ldata));
+	WebMiereScopedLock lock(WebMiereAudioLock(ldata));
 	if (ldata->sequentialAudioDecoder != NULL)
 	{
 		delete ldata->sequentialAudioDecoder;
@@ -2128,14 +2182,14 @@ SDKGetSequentialAudio(
 {
 	(void)fileRef;
 
-	if (!Vp9oHasMemoryFuncs(stdParms) || audioRec7 == NULL)
+	if (!WebMiereHasMemoryFuncs(stdParms) || audioRec7 == NULL)
 	{
 		return imOtherErr;
 	}
 
 	ImporterLocalRecH ldataH = reinterpret_cast<ImporterLocalRecH>(audioRec7->privateData);
 
-	Vp9oHandleLock handleLock(stdParms, ldataH);
+	WebMiereHandleLock handleLock(stdParms, ldataH);
 	ImporterLocalRecP ldata = handleLock.Get();
 	if (ldata == NULL)
 	{
@@ -2145,12 +2199,12 @@ SDKGetSequentialAudio(
 	{
 		return imOtherErr;
 	}
-	if (!Vp9oEnsureLocks(ldata))
+	if (!WebMiereEnsureLocks(ldata))
 	{
 		return imMemErr;
 	}
 
-	Vp9oScopedLock lock(Vp9oAudioLock(ldata));
+	WebMiereScopedLock lock(WebMiereAudioLock(ldata));
 	AudioDecoder *ad = EnsureSequentialAudioDecoder(ldataH);
 	return SDKReadAudioSamples(ldataH, audioRec7, ad, &ldata->savedSequentialAudioPosition);
 }
@@ -2168,7 +2222,7 @@ EnsureDecoder(ImporterLocalRecH ldataH)
 		return NULL;
 	}
 
-	Vp9oScopedLock lock(Vp9oVideoLock(ldataH));
+	WebMiereScopedLock lock(WebMiereVideoLock(ldataH));
 
 	if ((*ldataH)->decoder == NULL)
 	{
@@ -2203,7 +2257,7 @@ EnsureAudioDecoder(ImporterLocalRecH ldataH)
 		return NULL;
 	}
 
-	Vp9oScopedLock lock(Vp9oAudioLock(ldataH));
+	WebMiereScopedLock lock(WebMiereAudioLock(ldataH));
 
 	if ((*ldataH)->audioDecoder == NULL)
 	{
@@ -2238,7 +2292,7 @@ EnsureSequentialAudioDecoder(ImporterLocalRecH ldataH)
 		return NULL;
 	}
 
-	Vp9oScopedLock lock(Vp9oAudioLock(ldataH));
+	WebMiereScopedLock lock(WebMiereAudioLock(ldataH));
 
 	if ((*ldataH)->sequentialAudioDecoder == NULL)
 	{
@@ -2270,9 +2324,9 @@ IsBgraPixelFormat(PrPixelFormat fmt)
 
 static void
 SetOutputFormat(
-	Vp9oOutputFormat	*out,
+	WebMiereOutputFormat	*out,
 	PrPixelFormat		prFormat,
-	Vp9oOutputKind		kind,
+	WebMiereOutputKind		kind,
 	csSDK_int32			width,
 	csSDK_int32			height)
 {
@@ -2309,7 +2363,7 @@ ResolveFrameSize(
 static bool
 IsValidYUV420PSize(csSDK_int32 width, csSDK_int32 height)
 {
-	return Vp9oIsValidYuv420Size(width, height);
+	return WebMiereIsValidYuv420Size(width, height);
 }
 
 
@@ -2319,29 +2373,29 @@ SelectPreferredAnyFormat(
 	bool				ppix2Available,
 	csSDK_int32			width,
 	csSDK_int32			height,
-	Vp9oOutputFormat	*out)
+	WebMiereOutputFormat	*out)
 {
-#if VP9O_ENABLE_YUV420P_RETURN && VP9O_PREFER_YUV420P_RETURN
+#if WEBMIERE_ENABLE_YUV420P_RETURN && WEBMIERE_PREFER_YUV420P_RETURN
 	if (ppixAvailable && ppix2Available && IsValidYUV420PSize(width, height))
 	{
 		SetOutputFormat(out, PrPixelFormat_YUV_420_MPEG4_FRAME_PICTURE_PLANAR_8u_709,
-						VP9O_OUTPUT_YUV420P8, width, height);
+						WEBMIERE_OUTPUT_YUV420P8, width, height);
 		return true;
 	}
 #endif
 
-	if (ppixAvailable && Vp9oIsValidVideoSize(width, height))
+	if (ppixAvailable && WebMiereIsValidVideoSize(width, height))
 	{
 		SetOutputFormat(out, PrPixelFormat_BGRA_4444_8u,
-						VP9O_OUTPUT_BGRA8, width, height);
+						WEBMIERE_OUTPUT_BGRA8, width, height);
 		return true;
 	}
 
-#if VP9O_ENABLE_YUV420P_RETURN
+#if WEBMIERE_ENABLE_YUV420P_RETURN
 	if (ppixAvailable && ppix2Available && IsValidYUV420PSize(width, height))
 	{
 		SetOutputFormat(out, PrPixelFormat_YUV_420_MPEG4_FRAME_PICTURE_PLANAR_8u_709,
-						VP9O_OUTPUT_YUV420P8, width, height);
+						WEBMIERE_OUTPUT_YUV420P8, width, height);
 		return true;
 	}
 #endif
@@ -2357,7 +2411,7 @@ SelectBgraFallbackFormat(
 	bool				ppixAvailable,
 	csSDK_int32			nativeWidth,
 	csSDK_int32			nativeHeight,
-	Vp9oOutputFormat	*out)
+	WebMiereOutputFormat	*out)
 {
 	if (!ppixAvailable)
 	{
@@ -2367,8 +2421,8 @@ SelectBgraFallbackFormat(
 	if (formats == NULL || numFormats <= 0)
 	{
 		SetOutputFormat(out, PrPixelFormat_BGRA_4444_8u,
-						VP9O_OUTPUT_BGRA8, nativeWidth, nativeHeight);
-		return Vp9oIsValidVideoSize(nativeWidth, nativeHeight);
+						WEBMIERE_OUTPUT_BGRA8, nativeWidth, nativeHeight);
+		return WebMiereIsValidVideoSize(nativeWidth, nativeHeight);
 	}
 
 	for (csSDK_int32 i = 0; i < numFormats; i++)
@@ -2379,10 +2433,10 @@ SelectBgraFallbackFormat(
 			csSDK_int32 w = 0;
 			csSDK_int32 h = 0;
 			ResolveFrameSize(&formats[i], nativeWidth, nativeHeight, &w, &h);
-			if (Vp9oIsValidVideoSize(w, h))
+			if (WebMiereIsValidVideoSize(w, h))
 			{
 				SetOutputFormat(out, PrPixelFormat_BGRA_4444_8u,
-								VP9O_OUTPUT_BGRA8, w, h);
+								WEBMIERE_OUTPUT_BGRA8, w, h);
 				return true;
 			}
 		}
@@ -2400,11 +2454,11 @@ SelectOutputFormat(
 	bool				ppix2Available,
 	csSDK_int32			nativeWidth,
 	csSDK_int32			nativeHeight,
-	Vp9oOutputFormat	*out)
+	WebMiereOutputFormat	*out)
 {
 
 	SetOutputFormat(out, PrPixelFormat_BGRA_4444_8u,
-					VP9O_OUTPUT_BGRA8, nativeWidth, nativeHeight);
+					WEBMIERE_OUTPUT_BGRA8, nativeWidth, nativeHeight);
 
 	if (formats == NULL || numFormats <= 0)
 	{
@@ -2427,22 +2481,22 @@ SelectOutputFormat(
 			continue;
 		}
 
-#if VP9O_ENABLE_YUV420P_RETURN
+#if WEBMIERE_ENABLE_YUV420P_RETURN
 
 		if (formats[i].inPixelFormat == PrPixelFormat_YUV_420_MPEG4_FRAME_PICTURE_PLANAR_8u_709 &&
 			ppixAvailable && ppix2Available && IsValidYUV420PSize(w, h))
 		{
 			SetOutputFormat(out, PrPixelFormat_YUV_420_MPEG4_FRAME_PICTURE_PLANAR_8u_709,
-							VP9O_OUTPUT_YUV420P8, w, h);
+							WEBMIERE_OUTPUT_YUV420P8, w, h);
 			return true;
 		}
 #endif
 
 		if (formats[i].inPixelFormat == PrPixelFormat_BGRA_4444_8u &&
-			ppixAvailable && Vp9oIsValidVideoSize(w, h))
+			ppixAvailable && WebMiereIsValidVideoSize(w, h))
 		{
 			SetOutputFormat(out, PrPixelFormat_BGRA_4444_8u,
-							VP9O_OUTPUT_BGRA8, w, h);
+							WEBMIERE_OUTPUT_BGRA8, w, h);
 			return true;
 		}
 	}
@@ -2455,7 +2509,7 @@ static prMALError
 CreateOutputPPix(
 	ImporterLocalRecP		ldata,
 	PPixHand				*outFrame,
-	const Vp9oOutputFormat	&fmt,
+	const WebMiereOutputFormat	&fmt,
 	char					**outBuffer,
 	csSDK_int32				*outRowBytes)
 {
@@ -2464,7 +2518,7 @@ CreateOutputPPix(
 	if (outFrame)    *outFrame    = NULL;
 
 	if (ldata == NULL || ldata->PPixCreatorSuite == NULL || outFrame == NULL ||
-		!Vp9oIsValidVideoSize(fmt.width, fmt.height))
+		!WebMiereIsValidVideoSize(fmt.width, fmt.height))
 	{
 		return imOtherErr;
 	}
@@ -2484,7 +2538,7 @@ CreateOutputPPix(
 	}
 
 
-	if (fmt.kind == VP9O_OUTPUT_BGRA8 && outBuffer != NULL && outRowBytes != NULL)
+	if (fmt.kind == WEBMIERE_OUTPUT_BGRA8 && outBuffer != NULL && outRowBytes != NULL)
 	{
 		if (ldata->PPixSuite == NULL)
 		{
@@ -2517,14 +2571,14 @@ DisposeOutputPPix(ImporterLocalRecP ldata, PPixHand *outFrame)
 	}
 }
 
-#if VP9O_ENABLE_YUV420P_RETURN
+#if WEBMIERE_ENABLE_YUV420P_RETURN
 
 
 static bool
 TryGetSourceVideoYUV420P(
 	ImporterLocalRecP		ldata,
 	imSourceVideoRec		*sourceVideoRec,
-	const Vp9oOutputFormat	&outFmt,
+	const WebMiereOutputFormat	&outFmt,
 	VideoDecoder			*decoder,
 	int64_t					theFrame)
 {

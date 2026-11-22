@@ -7,8 +7,8 @@
 
 
 
-#ifndef VP9OPUS_AUDIO_DECODER_H
-#define VP9OPUS_AUDIO_DECODER_H
+#ifndef WEBMIERE_AUDIO_DECODER_H
+#define WEBMIERE_AUDIO_DECODER_H
 
 #include <cstdint>
 #include <vector>

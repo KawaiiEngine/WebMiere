@@ -56,7 +56,7 @@ Video-only files remain supported.
 
 ### VP9 transparency
 
-Premiere Pro can import and composite VP9 Profile 0 clips that carry a mask in WebM or Matroska (`AlphaMode` 1, VP9 mask in `BlockAdditional` ID 1). WebMiere decodes the color and mask with NVDEC on compatible GPUs and returns straight-alpha BGRA at native or reduced resolution. Resizing weights the color by coverage to preserve transparent edges. On compatible GPUs, VP9 alpha previews can be downscaled on the GPU to as small as 1/32 of the original size on each axis, including fractional ratios and odd output dimensions.
+Import and composite transparent VP9 Profile 0 clips in WebM or MKV in Premiere Pro. On supported NVIDIA GPUs, WebMiere also accelerates preview downscaling.
 
 > **Not sure whether your file is compatible?**  
 > [Check it with WebMiere Checker](https://kawaiiengine.github.io/WebMiere/checker/) — the check runs entirely in your browser, and nothing is uploaded. The Checker reads media metadata and cannot verify the VP9 alpha payload.
@@ -248,14 +248,11 @@ If another importer is installed, WebMiere is designed to take supported VP9/Opu
 
 If a YouTube download that should be supported does not import, download it again before investigating further. Incomplete downloads and unusual remuxing tools can produce files outside the normal supported YouTube-style VP9/Opus or AV1 SDR/Opus shape.
 
-## Known Behavior and Design Choices
+## Known Behavior
 
-- WebMiere favors responsive editing over strict recovery. Short audio reads and some recoverable audio decode gaps may be padded with silence.
-- Audio timing is normalized relative to the shared source start time. Small startup residues are handled at the beginning of each stream rather than allowed to become progressive audio drift.
-- YouTube/DASH muxing may produce small differences between video and audio end times. When a stream-specific duration is unavailable, a container-duration fallback can result in a short final-frame hold. This has not shown a visible problem in normal tested YouTube material.
-- True VFR files may be accepted as nominal CFR without exact timestamp reconstruction; frames may be selected, repeated, or skipped without a warning.
-- The importer registers with priority 224 in Premiere Pro and 37 when the Adobe SDK identifies After Effects. These values were verified in the SDK host. Importer selection in After Effects has not been tested. Premiere Pro remains the supported host.
-- For opaque clips, Premiere may occasionally request BGRA output for thumbnails, isolated frames, effects, or internal display paths. This is expected; normal playback generally uses YUV420P when available.
+- Short audio gaps may be filled with silence.
+- Some YouTube-style clips may briefly hold the last video frame.
+- Variable-frame-rate clips may open with repeated or skipped frames.
 
 ## License
 

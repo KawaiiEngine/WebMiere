@@ -36,6 +36,10 @@ struct WebMiereDecodedFrameView
 	int				linesize[4];
 };
 
+struct CUctx_st;
+struct CUmod_st;
+struct CUfunc_st;
+
 class VideoDecoder
 {
 public:
@@ -117,7 +121,12 @@ private:
 	bool	FreeCudaBuffersStrict();
 	bool	DestroyStreamStrict();
 	bool	BuildNppStreamContext(void *stream) noexcept;
+	bool	EnsureAlphaResizeKernel();
 	bool	EnsurePinned(size_t bytes);
+	bool	FreePinnedStaging();
+	bool	ReleaseAlphaGpuOutput();
+	bool	DownloadBgraOutput(const AVFrame *color, uint8_t *dst, int dstPitch,
+							   int width, int height, void *stream, bool resizeAlpha);
 	void	MarkCudaCleanupFailed() noexcept;
 
 
@@ -203,6 +212,9 @@ private:
 	size_t			mCudaYuvVPitch;
 	int				mCudaYuvBufW;
 	int				mCudaYuvBufH;
+	::CUmod_st *mAlphaResizeModule = nullptr;
+	::CUfunc_st *mAlphaResizeKernel = nullptr;
+	::CUctx_st *mAlphaResizeUnavailableCtx = nullptr;
 	void			*mCudaCtx;
 	void			*mCudaStream;
 	bool			mCudaCleanupFailed;

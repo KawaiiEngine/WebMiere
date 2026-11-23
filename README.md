@@ -56,7 +56,7 @@ Video-only files remain supported.
 
 ### VP9 transparency
 
-Premiere Pro can import and composite VP9 Profile 0 clips that carry a mask in WebM or Matroska (`AlphaMode` 1, VP9 mask in `BlockAdditional` ID 1). WebMiere decodes the color and mask with NVDEC on compatible GPUs and returns straight-alpha BGRA at native or reduced resolution. Resizing weights the color by coverage to preserve transparent edges. For eligible half-size requests, including 3840 × 2160 to 1920 × 1080, four CPU bands convert and reduce the downloaded frames in parallel.
+Premiere Pro can import and composite VP9 Profile 0 clips that carry a mask in WebM or Matroska (`AlphaMode` 1, VP9 mask in `BlockAdditional` ID 1). WebMiere decodes the color and mask with NVDEC on compatible GPUs and returns straight-alpha BGRA at native or reduced resolution. Resizing weights the color by coverage to preserve transparent edges. On compatible GPUs, VP9 alpha previews can be downscaled on the GPU to as small as 1/32 of the original size on each axis, including fractional ratios and odd output dimensions.
 
 > **Not sure whether your file is compatible?**  
 > [Check it with WebMiere Checker](https://kawaiiengine.github.io/WebMiere/checker/) — the check runs entirely in your browser, and nothing is uploaded. The Checker reads media metadata and cannot verify the VP9 alpha payload.

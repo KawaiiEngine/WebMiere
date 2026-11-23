@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.1 — 2026-11-23
+
+- Added GPU-accelerated resizing for VP9 alpha previews, including fractional downscaling.
+- Reduced memory usage when switching preview resolutions.
+
 ## 1.3.0 — 2026-11-22
 
 - Added VP9 alpha support for transparent WebM/MKV clips in Adobe Premiere Pro.

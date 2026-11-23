@@ -33,6 +33,7 @@
 
 #if WEBMIERE_ENABLE_NPP
 #include <cuda.h>
+#include "HalfAlphaPtx.h"
 #include <cuda_runtime.h>
 #include <npp.h>
 #endif
@@ -454,21 +455,10 @@ VideoDecoder::~VideoDecoder()
 
 void VideoDecoder::Close()
 {
-	bool cudaReleaseOk = ReleaseCudaBuffers();
+	ReleaseCudaBuffers();
+	mAlphaResizeUnavailableCtx = nullptr;
 
 #if WEBMIERE_ENABLE_NPP
-	if (mPinnedStaging != nullptr)
-	{
-		if (cudaFreeHost(mPinnedStaging) == cudaSuccess)
-		{
-			mPinnedStaging  = nullptr;
-			mPinnedCapacity = 0;
-		}
-		else
-		{
-			cudaReleaseOk = false;
-		}
-	}
 	if (mNppStreamCtx != nullptr)
 	{
 		delete static_cast<NppStreamContext*>(mNppStreamCtx);
@@ -476,10 +466,6 @@ void VideoDecoder::Close()
 	}
 	mNppStream = nullptr;
 #endif
-	if (!cudaReleaseOk)
-	{
-		MarkCudaCleanupFailed();
-	}
 
 	av_packet_free(&mAlphaPacket);
 	av_frame_free(&mAlphaFrame);
@@ -1212,7 +1198,12 @@ bool VideoDecoder::ConvertSurfaceToBGRA(const WebMiereDecodedFrameView &view, ui
 		}
 
 #if WEBMIERE_ENABLE_NPP
-		// Keep native, opaque and arbitrary-size requests on their original paths.
+		if (mAlphaCodec && !ReleaseAlphaGpuOutput())
+		{
+			MarkCudaCleanupFailed();
+			return false;
+		}
+		// The existing half-size software converter can work in bands.
 		useHalfBands = mAlphaCodec && WebMiereIsValidVideoSize(dstW, dstH) &&
 			src->width == 2 * dstW && src->height == 2 * dstH &&
 			static_cast<int64_t>(src->width) * src->height >= 1024 * 1024 && dstH >= 16 &&
@@ -1782,6 +1773,60 @@ bool VideoDecoder::PrepareCudaSurfaceRead(AVCUDADeviceContext *cudaDev,
 }
 
 
+#if WEBMIERE_ENABLE_NPP
+bool VideoDecoder::EnsureAlphaResizeKernel()
+{
+	if (mAlphaResizeKernel) return true;
+	CUresult result = CUDA_SUCCESS;
+	if (!mAlphaResizeModule)
+		result = cuModuleLoadData(&mAlphaResizeModule, kHalfAlphaPtx);
+	if (result == CUDA_SUCCESS)
+		result = cuModuleGetFunction(&mAlphaResizeKernel, mAlphaResizeModule, "ResizeAlpha709");
+	if (result == CUDA_SUCCESS) return true;
+
+	// Retry temporary failures (e.g. out of memory) on later frames.
+	switch (result)
+	{
+	case CUDA_ERROR_INVALID_IMAGE:
+	case CUDA_ERROR_NO_BINARY_FOR_GPU:
+	case CUDA_ERROR_INVALID_PTX:
+	case CUDA_ERROR_UNSUPPORTED_PTX_VERSION:
+	case CUDA_ERROR_JIT_COMPILER_NOT_FOUND:
+	case CUDA_ERROR_JIT_COMPILATION_DISABLED:
+	case CUDA_ERROR_NOT_FOUND:
+		mAlphaResizeUnavailableCtx = static_cast<CUcontext>(mCudaCtx);
+		break;
+	default:
+		break;
+	}
+	av_log(nullptr, AV_LOG_DEBUG, "WebMiere CUDA alpha-resize kernel unavailable (%d)\n", static_cast<int>(result));
+	return false;
+}
+
+// The caller has made the allocating FFmpeg CUDA context current.
+bool VideoDecoder::FreePinnedStaging()
+{
+	if (!mPinnedStaging) return true;
+	if (cudaFreeHost(mPinnedStaging) != cudaSuccess) return false;
+	mPinnedStaging = nullptr;
+	mPinnedCapacity = 0;
+	return true;
+}
+
+// Called on the transition to host-side alpha conversion, before downloading
+// the new frame. Keep the decoder, CUDA module, event and stream warm.
+bool VideoDecoder::ReleaseAlphaGpuOutput()
+{
+	if (!mCudaBgr && !mCudaBgra && !mCudaFlip && !mPinnedStaging) return true;
+	CuCtxPushGuard owner(static_cast<CUcontext>(mCudaCtx));
+	if (!owner.ok()) return false;
+	const bool deviceFreed = FreeCudaBuffersStrict();
+	const bool hostFreed = FreePinnedStaging();
+	return owner.pop() && deviceFreed && hostFreed;
+}
+#endif
+
+
 bool VideoDecoder::EnsurePinned(size_t bytes)
 {
 #if WEBMIERE_ENABLE_NPP
@@ -1793,15 +1838,10 @@ bool VideoDecoder::EnsurePinned(size_t bytes)
 	{
 		return true;
 	}
-	if (mPinnedStaging != nullptr)
+	if (!FreePinnedStaging())
 	{
-		if (cudaFreeHost(mPinnedStaging) != cudaSuccess)
-		{
-			MarkCudaCleanupFailed();
-			return false;
-		}
-		mPinnedStaging  = nullptr;
-		mPinnedCapacity = 0;
+		MarkCudaCleanupFailed();
+		return false;
 	}
 	void *p = nullptr;
 	if (cudaHostAlloc(&p, bytes, cudaHostAllocDefault) != cudaSuccess)
@@ -1818,6 +1858,51 @@ bool VideoDecoder::EnsurePinned(size_t bytes)
 }
 
 
+#if WEBMIERE_ENABLE_NPP
+bool VideoDecoder::DownloadBgraOutput(const AVFrame *color, uint8_t *dst, int dstPitch,
+                                      int width, int height, void *streamHandle, bool resizeAlpha)
+{
+	const int rowBytes = width * 4;
+	const bool direct = dstPitch > 0;
+	const auto stream = static_cast<cudaStream_t>(streamHandle);
+	const size_t stagingBytes = size_t(rowBytes) * mCudaBufH;
+	// A smaller preview no longer needs the native frame's pinned allocation.
+	if (resizeAlpha && mPinnedCapacity > stagingBytes && !FreePinnedStaging())
+	{
+		MarkCudaCleanupFailed();
+		return false;
+	}
+	if (!direct && !EnsurePinned(stagingBytes)) return false;
+
+	for (int first = 0; first < height; first += mCudaBufH)
+	{
+		int rows = std::min(mCudaBufH, height - first);
+		if (resizeAlpha)
+		{
+			auto luma = color->data[0], chroma = color->data[1];
+			int pitch = color->linesize[0], srcWidth = color->width, srcHeight = color->height;
+			void *args[] = { &luma, &chroma, &mAlphaFrame->data[0], &pitch, &mAlphaFrame->linesize[0],
+				&width, &height, &mCudaFlip, &mCudaFlipPitch, &srcWidth, &srcHeight, &first, &rows };
+			if (cuLaunchKernel(mAlphaResizeKernel, (width + 31) / 32, (rows + 7) / 8, 1,
+			                   32, 8, 1, 0, stream, args, nullptr) != CUDA_SUCCESS) return false;
+		}
+
+		uint8_t *hostRows = dst + static_cast<ptrdiff_t>(height - first - rows) * dstPitch;
+		if (cudaMemcpy2DAsync(direct ? hostRows : mPinnedStaging, direct ? dstPitch : rowBytes,
+		                      mCudaFlip, mCudaFlipPitch, rowBytes, rows,
+		                      cudaMemcpyDeviceToHost, stream) != cudaSuccess) return false;
+		if (!direct)
+		{
+			if (cudaStreamSynchronize(stream) != cudaSuccess) return false;
+			CopyPlaneRespectingRowBytes(hostRows, dstPitch, mPinnedStaging, rowBytes, rowBytes, rows);
+		}
+	}
+	// Direct copies and subsequent launches reuse the same buffer in stream order.
+	return !direct || cudaStreamSynchronize(stream) == cudaSuccess;
+}
+#endif
+
+
 bool VideoDecoder::ConvertToBGRA_CUDA(const AVFrame *f, uint8_t *dst, int dstRowBytes, int dstW, int dstH)
 {
 #if WEBMIERE_ENABLE_NPP
@@ -1831,8 +1916,12 @@ bool VideoDecoder::ConvertToBGRA_CUDA(const AVFrame *f, uint8_t *dst, int dstRow
 		return false;
 	}
 
-	if (!WebMiereIsValidVideoSize(dstW, dstH) ||
-		f->width != dstW || f->height != dstH)
+	if (!WebMiereIsValidVideoSize(dstW, dstH)) return false;
+	const bool resizeAlpha = f->width != dstW || f->height != dstH;
+	constexpr int maxReduction = 32;
+	if (resizeAlpha && (!mAlphaCodec || mSwsFlags != SWS_BILINEAR || f->color_range == AVCOL_RANGE_JPEG ||
+		dstW > f->width || dstH > f->height ||
+		f->width > maxReduction * dstW || f->height > maxReduction * dstH))
 	{
 		return false;
 	}
@@ -1841,6 +1930,10 @@ bool VideoDecoder::ConvertToBGRA_CUDA(const AVFrame *f, uint8_t *dst, int dstRow
 		return false;
 	}
 	const int bgraStride = dstW * 4;
+	// A full 1080p preview fits in one pass. Larger resizes reuse the same
+	// bounded output buffer across rows, including near-native requests.
+	constexpr int resizeBufferBytes = 8 * 1024 * 1024;
+	const int outputRows = resizeAlpha ? std::min(dstH, resizeBufferBytes / bgraStride) : dstH;
 	if (!RowBytesCanHold(dstRowBytes, bgraStride))
 	{
 		return false;
@@ -1854,12 +1947,14 @@ bool VideoDecoder::ConvertToBGRA_CUDA(const AVFrame *f, uint8_t *dst, int dstRow
 	}
 	AVCUDADeviceContext *alphaDevice = nullptr;
 	if (mAlphaCodec && (!ValidateCudaNV12Frame(mAlphaFrame, nullptr, &alphaDevice) ||
-		alphaDevice != cudev || mAlphaFrame->linesize[0] < dstW))
+		alphaDevice != cudev || mAlphaFrame->width != f->width || mAlphaFrame->height != f->height ||
+        mAlphaFrame->linesize[0] < f->width))
 	{
 		return false;
 	}
 	(void)fctx;
 	CUcontext cuCtx = cudev->cuda_ctx;
+	if (resizeAlpha && mAlphaResizeUnavailableCtx == cuCtx) return false;
 
 	if (mCudaCtx != nullptr && mCudaCtx != reinterpret_cast<void*>(cuCtx))
 	{
@@ -1880,8 +1975,9 @@ bool VideoDecoder::ConvertToBGRA_CUDA(const AVFrame *f, uint8_t *dst, int dstRow
 	bool			ok    = false;
 	do
 	{
-		if (mCudaBgr == nullptr || mCudaBgra == nullptr || mCudaFlip == nullptr ||
-			mCudaBufW != dstW || mCudaBufH != dstH)
+		if (resizeAlpha && !EnsureAlphaResizeKernel()) break;
+		if ((!resizeAlpha && (!mCudaBgr || !mCudaBgra)) || !mCudaFlip ||
+			mCudaBufW != dstW || mCudaBufH != outputRows)
 		{
 
 
@@ -1892,15 +1988,20 @@ bool VideoDecoder::ConvertToBGRA_CUDA(const AVFrame *f, uint8_t *dst, int dstRow
 			}
 
 			void *p0 = nullptr, *p1 = nullptr, *p2 = nullptr;
-			if (cudaMallocPitch(&p0, &mCudaBgrPitch,  static_cast<size_t>(dstW) * 3, static_cast<size_t>(dstH)) != cudaSuccess) { break; }
-			mCudaBgr = static_cast<uint8_t*>(p0);
-			if (cudaMallocPitch(&p1, &mCudaBgraPitch, static_cast<size_t>(dstW) * 4, static_cast<size_t>(dstH)) != cudaSuccess) { break; }
-			mCudaBgra = static_cast<uint8_t*>(p1);
-			if (cudaMallocPitch(&p2, &mCudaFlipPitch, static_cast<size_t>(dstW) * 4, static_cast<size_t>(dstH)) != cudaSuccess) { break; }
+			if (!resizeAlpha) {
+				if (cudaMallocPitch(&p0, &mCudaBgrPitch,  static_cast<size_t>(dstW) * 3, static_cast<size_t>(dstH)) != cudaSuccess) { break; }
+				mCudaBgr = static_cast<uint8_t*>(p0);
+				if (cudaMallocPitch(&p1, &mCudaBgraPitch, static_cast<size_t>(dstW) * 4, static_cast<size_t>(dstH)) != cudaSuccess) { break; }
+				mCudaBgra = static_cast<uint8_t*>(p1);
+				if (cudaMallocPitch(&p2, &mCudaFlipPitch, bgraStride, dstH) != cudaSuccess) { break; }
+			} else {
+				if (cudaMalloc(&p2, size_t(bgraStride) * outputRows) != cudaSuccess) { break; }
+				mCudaFlipPitch = bgraStride;
+			}
 			mCudaFlip = static_cast<uint8_t*>(p2);
 
 			mCudaBufW = dstW;
-			mCudaBufH = dstH;
+			mCudaBufH = outputRows;
 					}
 
 		void *streamVoid = nullptr;
@@ -1912,79 +2013,63 @@ bool VideoDecoder::ConvertToBGRA_CUDA(const AVFrame *f, uint8_t *dst, int dstRow
 		(void)queuedWait;
 		cudaStream_t stream = reinterpret_cast<cudaStream_t>(streamVoid);
 
-		if (mNppStreamCtx == nullptr)
+		if (!resizeAlpha)
 		{
-			break;
-		}
-		NppStreamContext &nppCtx = *static_cast<NppStreamContext*>(mNppStreamCtx);
-
-		const NppiSize roi    = { dstW, dstH };
-		const Npp8u   *pSrc[2] = {
-			reinterpret_cast<const Npp8u*>(f->data[0]),
-			reinterpret_cast<const Npp8u*>(f->data[1])
-		};
-		const int srcStep = f->linesize[0];
-
-		if (nppiNV12ToBGR_709CSC_8u_P2C3R_Ctx(pSrc, srcStep, mCudaBgr, static_cast<int>(mCudaBgrPitch), roi, nppCtx) != NPP_SUCCESS)
-		{
-			break;
-		}
-
-		const int dstOrder[4] = { 0, 1, 2, 3 };
-		if (nppiSwapChannels_8u_C3C4R_Ctx(mCudaBgr, static_cast<int>(mCudaBgrPitch), mCudaBgra, static_cast<int>(mCudaBgraPitch), roi, dstOrder, 255, nppCtx) != NPP_SUCCESS)
-		{
-			break;
-		}
-
-		if (mAlphaCodec && nppiCopy_8u_C1C4R_Ctx(mAlphaFrame->data[0], mAlphaFrame->linesize[0],
-				mCudaBgra + 3, static_cast<int>(mCudaBgraPitch), roi, nppCtx) != NPP_SUCCESS)
-		{
-			break;
-		}
-
-		if (nppiMirror_8u_C4R_Ctx(mCudaBgra, static_cast<int>(mCudaBgraPitch), mCudaFlip, static_cast<int>(mCudaFlipPitch), roi, NPP_HORIZONTAL_AXIS, nppCtx) != NPP_SUCCESS)
-		{
-			break;
-		}
-
-
-		const bool canCopyDirect = dstRowBytes >= bgraStride;
-		if (canCopyDirect)
-		{
-			if (cudaMemcpy2DAsync(dst, static_cast<size_t>(dstRowBytes),
-							  mCudaFlip, mCudaFlipPitch,
-							  static_cast<size_t>(bgraStride), static_cast<size_t>(dstH),
-							  cudaMemcpyDeviceToHost, stream) != cudaSuccess)
+			if (mNppStreamCtx == nullptr)
 			{
 				break;
 			}
-			if (cudaStreamSynchronize(stream) != cudaSuccess)
+			NppStreamContext &nppCtx = *static_cast<NppStreamContext*>(mNppStreamCtx);
+
+			const NppiSize roi    = { dstW, dstH };
+			const Npp8u   *pSrc[2] = {
+				reinterpret_cast<const Npp8u*>(f->data[0]),
+				reinterpret_cast<const Npp8u*>(f->data[1])
+			};
+			const int srcStep = f->linesize[0];
+
+			if (nppiNV12ToBGR_709CSC_8u_P2C3R_Ctx(pSrc, srcStep, mCudaBgr, static_cast<int>(mCudaBgrPitch), roi, nppCtx) != NPP_SUCCESS)
 			{
 				break;
 			}
-		}
-		else
-		{
-			const size_t bgraBytes = static_cast<size_t>(bgraStride) * static_cast<size_t>(dstH);
-			if (!EnsurePinned(bgraBytes))
+
+			const int dstOrder[4] = { 0, 1, 2, 3 };
+			if (nppiSwapChannels_8u_C3C4R_Ctx(mCudaBgr, static_cast<int>(mCudaBgrPitch), mCudaBgra, static_cast<int>(mCudaBgraPitch), roi, dstOrder, 255, nppCtx) != NPP_SUCCESS)
 			{
 				break;
 			}
-			if (cudaMemcpy2DAsync(mPinnedStaging, static_cast<size_t>(bgraStride),
-							  mCudaFlip, mCudaFlipPitch,
-							  static_cast<size_t>(bgraStride), static_cast<size_t>(dstH),
-							  cudaMemcpyDeviceToHost, stream) != cudaSuccess)
+
+			if (mAlphaCodec && nppiCopy_8u_C1C4R_Ctx(mAlphaFrame->data[0], mAlphaFrame->linesize[0],
+					mCudaBgra + 3, static_cast<int>(mCudaBgraPitch), roi, nppCtx) != NPP_SUCCESS)
 			{
 				break;
 			}
-			if (cudaStreamSynchronize(stream) != cudaSuccess)
+
+			if (nppiMirror_8u_C4R_Ctx(mCudaBgra, static_cast<int>(mCudaBgraPitch), mCudaFlip, static_cast<int>(mCudaFlipPitch), roi, NPP_HORIZONTAL_AXIS, nppCtx) != NPP_SUCCESS)
 			{
 				break;
 			}
-			CopyPlaneRespectingRowBytes(dst, dstRowBytes, mPinnedStaging, bgraStride, bgraStride, dstH);
+
+
 		}
 
-				ok = true;
+		if (!DownloadBgraOutput(f, dst, dstRowBytes, dstW, dstH, stream, resizeAlpha)) break;
+
+		// Both native and reduced GPU output replace the software workspace.
+		// Drop its backing buffers only after the GPU and host copy have finished.
+		if (mAlphaCodec && (mColorScratch || mSwFrame->buf[0] || mAlphaSwFrame->buf[0]))
+		{
+			av_frame_free(&mColorScratch);
+			av_frame_unref(mSwFrame);
+			av_frame_unref(mAlphaSwFrame);
+			mColorDownload = {};
+			mMaskDownload = {};
+		}
+        if (resizeAlpha) {
+            av_log(nullptr, AV_LOG_DEBUG, f->width == 2 * dstW && f->height == 2 * dstH
+                ? "WebMiere CUDA half-alpha frame complete\n" : "WebMiere CUDA alpha-resize frame complete\n");
+        }
+		ok = true;
 	}
 	while (false);
 
@@ -2324,7 +2409,7 @@ bool VideoDecoder::ReleaseCudaBuffersInCtx(void *ctxVoid)
 #if WEBMIERE_ENABLE_NPP
 	if (mCudaBgr == nullptr && mCudaBgra == nullptr && mCudaFlip == nullptr &&
 		mCudaYuvY == nullptr && mCudaYuvU == nullptr && mCudaYuvV == nullptr &&
-		mCudaStream == nullptr && mCudaProducerEvent == nullptr)
+		mCudaStream == nullptr && mCudaProducerEvent == nullptr && !mAlphaResizeModule && !mPinnedStaging)
 	{
 		mCudaBufW = 0; mCudaBufH = 0; mCudaYuvBufW = 0; mCudaYuvBufH = 0;
 		mCudaCtx = nullptr; mNppDevReady = false; mNppStream = nullptr;
@@ -2341,8 +2426,11 @@ bool VideoDecoder::ReleaseCudaBuffersInCtx(void *ctxVoid)
 		return false;
 	}
 
+	const bool moduleOk = !mAlphaResizeModule || cuModuleUnload(mAlphaResizeModule) == CUDA_SUCCESS;
+	if (moduleOk) { mAlphaResizeModule = nullptr; mAlphaResizeKernel = nullptr; }
 	const bool freeOk    = FreeCudaBuffersStrict();
 	const bool freeYuvOk = FreeCudaYuvBuffersStrict();
+	const bool pinnedOk  = FreePinnedStaging();
 	const bool eventOk   = DestroyCudaEventStrict();
 	const bool streamOk  = DestroyStreamStrict();
 
@@ -2351,7 +2439,7 @@ bool VideoDecoder::ReleaseCudaBuffersInCtx(void *ctxVoid)
 	const CUresult	popRes = cuCtxPopCurrent(&popped);
 
 
-	if (!freeOk)
+	if (!freeOk || !moduleOk || !pinnedOk)
 	{
 
 		mNppDevReady = false;
